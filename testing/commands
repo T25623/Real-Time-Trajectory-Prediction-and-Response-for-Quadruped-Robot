@@ -1,0 +1,1 @@
+hailo-detect --hef-path ~/FYP/test/balloonv8s.hef --labels-json ~/FYP/test/balloon.json --input rpi --show-fps --frame-rate 60
