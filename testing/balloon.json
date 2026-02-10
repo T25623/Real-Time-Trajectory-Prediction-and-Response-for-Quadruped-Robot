@@ -1,5 +1,5 @@
 {
- "detection_threshold": 0.5,
+ "detection_threshold": 0.7,
  "max_boxes": 1,
  "labels": [
   "balloon"
