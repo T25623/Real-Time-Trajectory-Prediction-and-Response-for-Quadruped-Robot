@@ -29,6 +29,7 @@ from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 center_x = 0
 center_y = 0
 detected = False
+y = 0
 
 # X movement
 latest_points = None
@@ -181,13 +182,19 @@ def compute_z():
     return z
 
 def compute_y():
-    global center_y
+    global center_y, y
     deadzone = 0.1
 
     if abs(center_y) < deadzone:
         return 0.0
+    temp_y = (center_y - 0.5) * 0.25
+    if temp_y > 0.05:
+        temp_y = 0.05
+    elif temp_y < -0.05:
+        temp_y = -0.05
+
+    y += temp_y
     
-    y = (center_y - 0.5)
     return y
 
 def compute_x():
@@ -238,24 +245,33 @@ async def go2_connect():
     print("Go2 control loop started")
     while True:
         print(detected)
-        if detected:
+        if True:
             z = compute_z()
             y = compute_y()
-
+            x = compute_x()
+            print(f"min dist: {min_distance}")
             print(f"Z is: {z}")
             print(f"Y is: {y}")
+            print(f"Z is: {z}")
 
-            await conn.datachannel.pub_sub.publish_request_new(
-                RTC_TOPIC["SPORT_MOD"],
-                {
-                    "api_id": SPORT_CMD["Move"],
-                    "parameter": {
-                        "x": 0.0,
-                        "y": y,
-                        "z": z,
-                    },
-                },
-            )  
+            # await conn.datachannel.pub_sub.publish_request_new(
+            #     RTC_TOPIC["SPORT_MOD"],
+            #     {
+            #         "api_id": SPORT_CMD["Move"],
+            #         "parameter": {
+            #             "x": 0.0,
+            #             "y": 0,
+            #             "z": z,
+            #         },
+            #     },
+            # )
+            # await conn.datachannel.pub_sub.publish_request_new(
+            #     RTC_TOPIC["SPORT_MOD"],
+            #     {
+            #         "api_id": SPORT_CMD["Euler"],
+            #         "parameter": {"x": 0, "y": y, "z": 0},
+            #     },
+            # )
 
         await asyncio.sleep(0.1)
 
