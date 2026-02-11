@@ -25,10 +25,16 @@ from go2_webrtc_driver.webrtc_driver import (
 )
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 
+# Y / Z movement
 center_x = 0
 center_y = 0
-z = 0
 detected = False
+
+# X movement
+latest_points = None
+mask_state = 0
+latest_center = None
+min_distance = 1000
 
 BASE = Path(
     "/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/testing"
@@ -46,6 +52,98 @@ sys.argv = [
 
 class AppState(app_callback_class):
     pass
+
+
+def lidar_callback(message):
+    global latest_points, mask_state, latest_center, min_distance
+    #print(message)
+
+    try:
+        points = np.array(message["data"]["data"]["points"])
+        origin = np.array(message["data"]["origin"])
+        width = np.array(message["data"]["width"])
+        resolution = np.array(message["data"]["resolution"])
+
+        center_x = origin[0] + width[0]/2 * resolution[0]
+        center_y = origin[1] + width[1]/2 * resolution[1]
+        center_z = origin[2] + width[2]/2 * resolution[2]
+
+        x = points[:, 0]
+        y = points[:, 1]
+        z = points[:, 2]
+        
+        mask = 0
+        mask_state = 6
+        #center = points.mean(axis=0)
+        origin_x = origin[0] 
+        origin_y = origin[1]
+        origin_z = origin[2]
+        
+        max_x = np.max(x)
+        max_y = np.max(y)
+        max_z = np.max(z)
+
+        # print(f"max x: {max_x}")
+        # print(f"max y: {max_y}")
+        # print(f"max z: {max_z}")
+
+        min_x = np.min(x)
+        min_y = np.min(y)
+        min_z = np.min(z)
+
+        # print(f"min x: {min_x}")
+        # print(f"min y: {min_y}")
+        # print(f"min z: {min_z}")
+
+        # center_x = (max_x - min_x) / 2
+        # center_y = (max_y - min_y) / 2
+        # center_z = (max_z - min_z) / 2
+
+        # for point in points:
+        #     i = (point[0] - origin_x) / 0.05
+        #     j = (point[1] - origin_y) / 0.05
+        #     k = (point[2] - origin_z) / 0.05
+
+        #     if i == 64 and j == 64:
+        #         center_x = point[0]
+        #         center_y = point[1]
+        #         center_z = 0.2
+
+        print(f"center x: {center_x}")
+        print(f"center y: {center_y}")
+        print(f"center z: {center_z}")
+
+        if mask_state == 0:
+            mask = (np.abs(x+center_x * 0.81) + y+center_y) <= 0
+        elif mask_state == 1:
+            mask = (np.abs(x+center_x * 0.81) - y+center_y) <= 0
+        elif mask_state == 2:
+            mask = (np.abs(y+center_y * 0.81) + x+center_x) <= 0
+        elif mask_state == 3:
+            mask = (np.abs(y+center_y * 0.81) - x+center_x) <= 0
+        elif mask_state == 4:
+            mask = (x+center_x)**2 + (y+center_y)**2 <= 10
+        elif mask_state == 5:
+            mask = (x+center_x)**2 + (y+center_y)**2 >= 2
+        elif mask_state == 6:
+            mask = np.abs(z-1)<=1
+        else:
+            mask = np.ones(len(points), dtype=bool)
+
+        filtered_points = points[mask]
+        
+        for point in filtered_points:
+            distance = np.linalg.norm(point - np.array([center_x, center_y, center_z]))
+            if distance <= min_distance:
+                min_distance = distance
+        
+        print(f"min distance: {min_distance}")
+        with points_lock:
+            latest_points = filtered_points
+            latest_center = np.array([center_x, center_y, center_z])
+
+    except Exception as e:
+        logging.error(f"LiDAR callback error: {e}")
 
 def app_callback(element, buffer, state):
     global center_x, center_y, detected
@@ -79,13 +177,47 @@ def compute_z():
     if abs(center_x) < deadzone:
         return 0.0
 
-    z = (center_x - 0.5) * 1.2
+    z = (center_x - 0.5)
     return z
+
+def compute_y():
+    global center_y
+    deadzone = 0.1
+
+    if abs(center_y) < deadzone:
+        return 0.0
+    
+    y = (center_y - 0.5)
+    return y
+
+def compute_x():
+    global min_distance
+    deadzone = 0.5
+    target_distance = 4
+    x = 0
+
+    if min_distance < target_distance - deadzone:
+        x = (min_distance - target_distance) / 100
+    elif min_distance > target_distance + deadzone:
+        x = (min_distance - target_distance) / 100
+    else:
+        x = 0.0
+    
+    return x
+
 
 
 async def go2_connect():
     conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalAP)
     await conn.connect()
+    
+    await conn.datachannel.disableTrafficSaving(True)
+    
+    conn.datachannel.set_decoder(decoder_type="native")
+    conn.datachannel.pub_sub.publish_without_callback("rt/utlidar/switch", "on")
+    conn.datachannel.pub_sub.subscribe(
+        "rt/utlidar/voxel_map_compressed", lidar_callback
+    )
 
     response = await conn.datachannel.pub_sub.publish_request_new(
         RTC_TOPIC["MOTION_SWITCHER"], {"api_id": 1001}
@@ -108,18 +240,22 @@ async def go2_connect():
         print(detected)
         if detected:
             z = compute_z()
+            y = compute_y()
+
             print(f"Z is: {z}")
+            print(f"Y is: {y}")
+
             await conn.datachannel.pub_sub.publish_request_new(
                 RTC_TOPIC["SPORT_MOD"],
                 {
                     "api_id": SPORT_CMD["Move"],
                     "parameter": {
                         "x": 0.0,
-                        "y": 0.0,
+                        "y": y,
                         "z": z,
                     },
                 },
-            )
+            )  
 
         await asyncio.sleep(0.1)
 
