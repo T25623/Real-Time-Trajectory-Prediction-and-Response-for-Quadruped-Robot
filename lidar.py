@@ -16,20 +16,27 @@ mask_state = 0
 time_tracker = 0
 latest_center = None
 
+last_print_time = 0
+PRINT_PERIOD = 5
+
+
 
 def lidar_callback(message):
-    global latest_points, mask_state, latest_center
-    #print(message)
+    global latest_points, mask_state, latest_center, last_print_time, PRINT_PERIOD
+    #(message)
+
+    
+
 
     try:
-        points = np.array(message["data"]["data"]["points"])
-        origin = np.array(message["data"]["origin"])
-        width = np.array(message["data"]["width"])
-        resolution = np.array(message["data"]["resolution"])
+        points = message["data"]["data"]["points"]
+        origin = np.array(message["data"]["origin"], dtype=float)
+        width = np.array(message["data"]["width"], dtype=float)
+        resolution = float(message["data"]["resolution"])
 
-        center_x = origin[0] + width[0]/2 * resolution[0]
-        center_y = origin[1] + width[1]/2 * resolution[1]
-        center_z = origin[2] + width[2]/2 * resolution[2]
+        center = origin + (width / 2.0) * resolution
+        center_x, center_y, center_z = center
+
 
 
         x = points[:, 0]
@@ -37,67 +44,27 @@ def lidar_callback(message):
         z = points[:, 2]
         
         mask = 0
-        mask_state = 6
-        #center = points.mean(axis=0)
-        origin_x = origin[0] 
-        origin_y = origin[1]
-        origin_z = origin[2]
 
-        
-        max_x = np.max(x)
-        max_y = np.max(y)
-        max_z = np.max(z)
-
-        # print(f"max x: {max_x}")
-        # print(f"max y: {max_y}")
-        # print(f"max z: {max_z}")
-
-        min_x = np.min(x)
-        min_y = np.min(y)
-        min_z = np.min(z)
-
-        # print(f"min x: {min_x}")
-        # print(f"min y: {min_y}")
-        # print(f"min z: {min_z}")
-
-        # center_x = (max_x - min_x) / 2
-        # center_y = (max_y - min_y) / 2
-        # center_z = (max_z - min_z) / 2
 
         min_distance = 100
-        # for point in points:
-        #     i = (point[0] - origin_x) / 0.05
-        #     j = (point[1] - origin_y) / 0.05
-        #     k = (point[2] - origin_z) / 0.05
+        mask_state = 6
 
-        #     if i == 64 and j == 64:
-        #         center_x = point[0]
-        #         center_y = point[1]
-        #         center_z = 0.2
-
-
-        
-
-        print(f"center x: {center_x}")
-        print(f"center y: {center_y}")
-        print(f"center z: {center_z}")
-        
-
+        print(mask_state)
 
         if mask_state == 0:
-            mask = (np.abs(x+center_x * 0.81) + y+center_y) <= 0
+            mask = (np.abs(x-center_x * 0.81) + y-center_y) <= 0
         elif mask_state == 1:
-            mask = (np.abs(x+center_x * 0.81) - y+center_y) <= 0
+            mask = (np.abs(x-center_x * 0.81) - y+center_y) <= 0
         elif mask_state == 2:
-            mask = (np.abs(y+center_y * 0.81) + x+center_x) <= 0
+            mask = (np.abs(y-center_y * 0.81) + x-center_x) <= 0
         elif mask_state == 3:
-            mask = (np.abs(y+center_y * 0.81) - x+center_x) <= 0
+            mask = (np.abs(y-center_y * 0.81) - x-center_x) <= 0
         elif mask_state == 4:
-            mask = (x+center_x)**2 + (y+center_y)**2 <= 10
+            mask = (x-center_x)**2 + (y-center_y)**2 <= 10
         elif mask_state == 5:
-            mask = (x+center_x)**2 + (y+center_y)**2 >= 2
+            mask = (x-center_x)**2 + (y-center_y)**2 >= 2
         elif mask_state == 6:
-            mask = np.abs(z-1)<=1
+            mask = np.abs(z-10)<=10
         else:
             mask = np.ones(len(points), dtype=bool)
 
@@ -111,11 +78,16 @@ def lidar_callback(message):
             if distance <= min_distance:
                 min_distance = distance
         
-        print(f"min distance: {min_distance}")
+        now = time.time()
+        if now - last_print_time > PRINT_PERIOD:
+            print(f"Min distance: {min_distance:.3f}")
+            last_print_time = now
+            
 
         with points_lock:
             latest_points = filtered_points
             latest_center = np.array([center_x, center_y, center_z])
+
 
 
     except Exception as e:
@@ -164,10 +136,11 @@ def visualizer_loop():
                         first_frame = False
         
         if time.time() >= time_tracker+5:
-            print(f"State {mask_state}")
+            (f"State {mask_state}")
             time_tracker = time.time()
             mask_state += 1
-            mask_state = mask_state % 4
+            
+            mask_state = mask_state % 3
 
         vis.poll_events()
         vis.update_renderer()
@@ -199,6 +172,7 @@ if __name__ == "__main__":
         vis_thread.start()
 
         asyncio.run(main())
+        
     except KeyboardInterrupt:
         print("\nProgram interrupted by user")
         sys.exit(0)
