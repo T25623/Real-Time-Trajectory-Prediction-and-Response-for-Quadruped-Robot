@@ -12,6 +12,7 @@ import logging
 import numpy as np
 from queue import Queue
 
+
 logging.basicConfig(level=logging.FATAL)
 logging.getLogger("go2_webrtc_driver").setLevel(logging.ERROR)
 logging.getLogger("aiortc").setLevel(logging.ERROR)
@@ -36,9 +37,6 @@ detected = False
 y = 0
 
 # X movement
-latest_points = None
-mask_state = 0
-latest_center = None
 min_distance = 1000
 lidar_queue = Queue(maxsize=5)
 
@@ -54,6 +52,7 @@ sys.argv = [
     "--input", "rpi",
     "--frame-rate", "60",
     "--show-fps",
+    
 ]
 
 
@@ -88,25 +87,8 @@ def lidar_distance():
             y = points[:, 1]
             z = points[:, 2]
             
-            mask = 0
-            mask_state = 6
-
-            if mask_state == 0:
-                mask = (np.abs(x+center_x * 0.81) + y+center_y) <= 0
-            elif mask_state == 1:
-                mask = (np.abs(x+center_x * 0.81) - y+center_y) <= 0
-            elif mask_state == 2:
-                mask = (np.abs(y+center_y * 0.81) + x+center_x) <= 0
-            elif mask_state == 3:
-                mask = (np.abs(y+center_y * 0.81) - x+center_x) <= 0
-            elif mask_state == 4:
-                mask = (x+center_x)**2 + (y+center_y)**2 <= 10
-            elif mask_state == 5:
-                mask = (x+center_x)**2 + (y+center_y)**2 >= 2
-            elif mask_state == 6:
-                mask = np.abs(z-1)<=1
-            else:
-                mask = np.ones(len(points), dtype=bool)
+            mask = np.abs(z-1)<=1
+            
 
             filtered_points = points[mask]
             
@@ -118,7 +100,8 @@ def lidar_distance():
 
         except Exception as e:
             logging.error(f"LiDAR callback error {e}")
-        time.sleep(0.1)
+        
+
 
 def app_callback(element, buffer, state):
     global center_x, center_y, detected
@@ -151,7 +134,7 @@ def compute_z():
     if abs(center_x) < deadzone:
         return 0.0
 
-    z = (center_x - 0.5)
+    z = (center_x - 0.5) * 2
     return z
 
 def compute_y():
@@ -207,7 +190,7 @@ async def go2_connect():
     if response["data"]["header"]["status"]["code"] == 0:
         data = json.loads(response["data"]["data"])
         mode = data["name"]
-        print(f"Current motion mode: {mode}")
+        #print(f"Current motion mode: {mode}")
 
         if mode != "normal":
             await conn.datachannel.pub_sub.publish_request_new(
@@ -215,7 +198,7 @@ async def go2_connect():
                 {"api_id": 1002, "parameter": {"name": "normal"}},
             )
 
-    await asyncio.sleep(1)
+    
     print("Go2 control loop started")
     while True:
         #print(detected)
@@ -223,17 +206,17 @@ async def go2_connect():
             z = compute_z()
             y = compute_y()
             x = compute_x()
-            print(f"min dist: {min_distance}")
-            print(f"Z is: {z}")
-            print(f"Y is: {y}")
-            print(f"X is: {x}")
+            # print(f"min dist: {min_distance}")
+            # print(f"Z is: {z}")
+            # print(f"Y is: {y}")
+            # print(f"X is: {x}")
 
             await conn.datachannel.pub_sub.publish_request_new(
                 RTC_TOPIC["SPORT_MOD"],
                 {
                     "api_id": SPORT_CMD["Move"],
                     "parameter": {
-                        "x": x,
+                        "x": 0,
                         "y": 0,
                         "z": z,
                     },
@@ -246,8 +229,11 @@ async def go2_connect():
                     "parameter": {"x": 0, "y": y, "z": 0},
                 },
             )
-
+        
         await asyncio.sleep(0.1)
+
+
+        
 
 
 def go2_thread_fn():
