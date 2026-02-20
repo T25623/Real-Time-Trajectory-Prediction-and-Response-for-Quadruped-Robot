@@ -2,7 +2,6 @@ import asyncio
 import logging
 import sys
 import numpy as np
-import pandas as pd
 import open3d as o3d
 from go2_webrtc_driver.webrtc_driver import Go2WebRTCConnection, WebRTCConnectionMethod
 import threading

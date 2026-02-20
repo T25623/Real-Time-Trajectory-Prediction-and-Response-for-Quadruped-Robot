@@ -9,6 +9,7 @@ import threading
 import json
 import logging
 import numpy as np
+import time
 from queue import Queue
 
 logging.basicConfig(level=logging.FATAL)
@@ -41,7 +42,7 @@ sys.argv = [
     "--hef-path", str(BASE / "balloonv8s.hef"),
     "--labels-json", str(BASE / "balloon.json"),
     "--input", "rpi",
-    "--frame-rate", "60",
+    "--frame-rate", "70",
     "--show-fps",
 ]
 
@@ -139,43 +140,42 @@ def compute_y():
 
 def compute_x():
     global min_distance, perfrom_action
-    deadzone = 0.2
-    target_distance = 0.8
+    deadzone = 0.1
+    target_distance = 0.7
     x = 0.0
     if min_distance < 2:
         if min_distance < target_distance - deadzone:
             x = -min_distance
         elif min_distance > target_distance + deadzone:
             x = min_distance
-        elif min_distance >= target_distance - deadzone and min_distance <= target_distance + deadzone:
-            if action_cooldown_check() and not perfrom_action:
-                perfrom_action = True
 
     return x / 4
 
-def action_cooldown_check(cooldown_seconds = 10):
+def action_cooldown_check(cooldown_seconds = 5):
     global cooldown_timer
     
-    perfrom_action = False
-
     current_time = time.time()
 
     if current_time >= cooldown_timer+cooldown_seconds:
-        perfrom_action = True
+        print(f"Current: {current_time}")
+        print(f"Cooldown: {cooldown_timer}")
+        print(f"Cooldown Seconds: {cooldown_seconds}")
+        cooldown_timer = current_time
+        return True
     else:
-        perfrom_action = False
+        return False
 
-    return perfrom_action
 
-async def go2_interact(conn, action):
+def go2_interact(conn, action):
     global perfrom_action
-    await conn.datachannel.pub_sub.publish_request_new(
+    
+    conn.datachannel.pub_sub.publish_request_no_wait(
         RTC_TOPIC["SPORT_MOD"],
         {
             "api_id": SPORT_CMD[action],
             "parameter": {"data": True}
         }
-    )
+    )            
     perfrom_action = False
 
 async def go2_setup():
@@ -220,29 +220,29 @@ async def go2_movement_loop(conn):
             x_val = 0.0
             y_val = last_y
         
+        if detected:
+            if abs(min_distance - 0.5) <= 0.1:
+                if action_cooldown_check():
+                    go2_interact(conn, "FrontPounce")
+                    print("Sitting")                
+            else:
+                print("walk")
+                response = conn.datachannel.pub_sub.publish_request_no_wait(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {
+                        "api_id": SPORT_CMD["Move"],
+                        "parameter": {"x": x_val, "y": 0, "z": z},
+                    },
+                )
+                # response = conn.datachannel.pub_sub.publish_request_no_wait(
+                #     RTC_TOPIC["SPORT_MOD"],
+                #     {
+                #         "api_id": SPORT_CMD["Euler"],
+                #         "parameter": {"x": 0, "y": y_val, "z": 0},
+                #     },
+                # )
 
-        if perfrom_action:
-            print("Sitting")
-            #go2_interact(conn, "sit")
             
-            perfrom_action = False
-        else:
-            response = await conn.datachannel.pub_sub.publish_request_new(
-                RTC_TOPIC["SPORT_MOD"],
-                {
-                    "api_id": SPORT_CMD["Move"],
-                    "parameter": {"x": x_val, "y": 0, "z": z},
-                },
-            )
-            # response = await conn.datachannel.pub_sub.publish_request_new(
-            #     RTC_TOPIC["SPORT_MOD"],
-            #     {
-            #         "api_id": SPORT_CMD["Euler"],
-            #         "parameter": {"x": 0, "y": y_val, "z": 0},
-            #     },
-            # )
-
-        
 
         await asyncio.sleep(0.1) 
 
@@ -262,7 +262,7 @@ def main():
 
     state = AppState()
     app = GStreamerDetectionApp(app_callback, state)
-    app.run()  # blocking
+    app.run() 
 
 if __name__ == "__main__":
     main()

@@ -30,13 +30,11 @@ from go2_webrtc_driver.webrtc_driver import (
 )
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 
-# Y / Z movement
 center_x = 0
 center_y = 0
 detected = False
 y = 0
 
-# X movement
 min_distance = 1000
 lidar_queue = Queue(maxsize=5)
 
