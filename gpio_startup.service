@@ -1,0 +1,14 @@
+[Unit]
+Description=FYP Project GPIO startup
+After=graphical.target
+
+[Service]
+User=go2
+WorkingDirectory=/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/go2/.Xauthority
+ExecStart=/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/gpio_startup.sh
+Restart=always
+
+[Install]
+WantedBy=graphical.target

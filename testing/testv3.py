@@ -42,7 +42,7 @@ sys.argv = [
     "--hef-path", str(BASE / "balloonv8s.hef"),
     "--labels-json", str(BASE / "balloon.json"),
     "--input", "rpi",
-    "--frame-rate", "70",
+    "--frame-rate", "60",
     "--show-fps",
 ]
 
@@ -131,9 +131,9 @@ def compute_y():
         return y
 
     temp_y = (center_y - 0.5) * 0.25
-    temp_y = max(min(temp_y, 0.05), -0.05)
     
-    if -0.4 <= y + temp_y <= 0.4:
+    
+    if -0.4 <= (y + temp_y) <= 0.4:
         y += temp_y
     
     return y
@@ -213,27 +213,28 @@ async def go2_movement_loop(conn):
             z = compute_z()      
             x_val = compute_x()   
             y_val = compute_y()   
-            last_y = y_val        
 
         else:
             z = 0.0
             x_val = 0.0
-            y_val = last_y
+            y_val = compute_y() 
         
         if detected:
+            print(f"min Distance: {min_distance}")
+            print(f"Y val: {y_val}")
             if abs(min_distance - 0.5) <= 0.1:
                 if action_cooldown_check():
-                    go2_interact(conn, "FrontPounce")
-                    print("Sitting")                
+                    go2_interact(conn, "Hello")
             else:
-                print("walk")
                 response = conn.datachannel.pub_sub.publish_request_no_wait(
                     RTC_TOPIC["SPORT_MOD"],
                     {
                         "api_id": SPORT_CMD["Move"],
                         "parameter": {"x": x_val, "y": 0, "z": z},
+                        
                     },
                 )
+                # await asyncio.sleep(0.02)
                 # response = conn.datachannel.pub_sub.publish_request_no_wait(
                 #     RTC_TOPIC["SPORT_MOD"],
                 #     {
@@ -241,6 +242,7 @@ async def go2_movement_loop(conn):
                 #         "parameter": {"x": 0, "y": y_val, "z": 0},
                 #     },
                 # )
+                
 
             
 
