@@ -9,6 +9,7 @@ import threading
 import json
 import logging
 import numpy as np
+import time
 from queue import Queue
 
 logging.basicConfig(level=logging.FATAL)
@@ -21,14 +22,14 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 from go2_webrtc_driver.webrtc_driver import Go2WebRTCConnection, WebRTCConnectionMethod
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 
-# Shared state
+conn = None
+
 center_x = 0
 center_y = 0
 detected = False
 y = 0
 min_distance = 1000
 lidar_queue = Queue(maxsize=5)
-z_history = []  # for smoothing Z rotation
 last_z = 0
 last_y = 0
 perfrom_action = False
@@ -110,18 +111,14 @@ def app_callback(element, buffer, state):
     detected = True
 
 def compute_z():
-    global center_x, z_history
+    global center_x
     deadzone = 0.01 
 
     offset = center_x - 0.5
     if abs(offset) < deadzone:
         offset = 0.0
 
-    z_history.append(offset)
-    if len(z_history) > 5: 
-        z_history.pop(0)
-    avg_offset = sum(z_history) / len(z_history)
-    return avg_offset * 2  
+    return offset * 2  
 
 def compute_y():
     global center_y, y
@@ -129,56 +126,56 @@ def compute_y():
     if abs(center_y - 0.5) < deadzone:
         return y
 
-    temp_y = (center_y - 0.5) * 0.25
-    temp_y = max(min(temp_y, 0.05), -0.05)
+    temp_y = (center_y - 0.5) * 0.02
     
-    if -0.4 <= y + temp_y <= 0.4:
+    
+    if -0.4 <= (y + temp_y) <= 0.4:
         y += temp_y
     
     return y
 
 def compute_x():
     global min_distance, perfrom_action
-    deadzone = 0.2
-    target_distance = 0.8
+    deadzone = 0.1
+    target_distance = 0.7
     x = 0.0
     if min_distance < 2:
         if min_distance < target_distance - deadzone:
             x = -min_distance
         elif min_distance > target_distance + deadzone:
             x = min_distance
-        elif min_distance >= target_distance - deadzone and min_distance <= target_distance + deadzone:
-            if action_cooldown_check() and not perfrom_action:
-                perfrom_action = True
 
     return x / 4
 
-def action_cooldown_check(cooldown_seconds = 10):
+def action_cooldown_check(cooldown_seconds = 5):
     global cooldown_timer
     
-    perfrom_action = False
-
     current_time = time.time()
 
     if current_time >= cooldown_timer+cooldown_seconds:
-        perfrom_action = True
+        print(f"Current: {current_time}")
+        print(f"Cooldown: {cooldown_timer}")
+        print(f"Cooldown Seconds: {cooldown_seconds}")
+        cooldown_timer = current_time
+        return True
     else:
-        perfrom_action = False
+        return False
 
-    return perfrom_action
 
-async def go2_interact(conn, action):
-    global perfrom_action
-    await conn.datachannel.pub_sub.publish_request_new(
+def go2_interact(action):
+    global perfrom_action, conn
+    
+    conn.datachannel.pub_sub.publish_request_no_wait(
         RTC_TOPIC["SPORT_MOD"],
         {
             "api_id": SPORT_CMD[action],
             "parameter": {"data": True}
         }
-    )
+    )            
     perfrom_action = False
 
 async def go2_setup():
+    global conn
     conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalAP)
     await conn.connect()
 
@@ -205,64 +202,83 @@ async def go2_setup():
     return conn
 
 async def go2_movement_loop(conn):
-    global last_y, perfrom_action
-    last_y = 0.0
+    global perfrom_action
     print("Go2 movement loop started")
     while True:
         if detected:
             z = compute_z()      
             x_val = compute_x()   
-            y_val = compute_y()   
-            last_y = y_val        
 
         else:
             z = 0.0
             x_val = 0.0
-            y_val = last_y
         
+        if detected:
+            print(f"min Distance: {min_distance}")
+            if abs(min_distance - 0.5) <= 0.1:
+                if action_cooldown_check():
+                    # go2_interact("Hello")
+                    print("Hello")
+            else:
+                response = conn.datachannel.pub_sub.publish_request_no_wait(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {
+                        "api_id": SPORT_CMD["Move"],
+                        "parameter": {"x": x_val, "y": 0, "z": z},
+                        
+                    },
+                )
 
-        if perfrom_action:
-            print("Sitting")
-            #go2_interact(conn, "sit")
-            
-            perfrom_action = False
-        else:
-            response = await conn.datachannel.pub_sub.publish_request_new(
+        await asyncio.sleep(0.02) 
+
+async def go2_movement_loop2(conn):
+    global last_y
+    last_y = 0.0
+    print("Go2 movement2 loop started")
+    while True:
+        if detected:
+            y_val = compute_y()
+            last_y = y_val
+
+            print(f"Y val: {y_val}")
+
+            response = conn.datachannel.pub_sub.publish_request_no_wait(
                 RTC_TOPIC["SPORT_MOD"],
                 {
-                    "api_id": SPORT_CMD["Move"],
-                    "parameter": {"x": x_val, "y": 0, "z": z},
+                    "api_id": SPORT_CMD["Euler"],
+                    "parameter": {"x": 0, "y": y_val, "z": 0},
                 },
             )
-            # response = await conn.datachannel.pub_sub.publish_request_new(
-            #     RTC_TOPIC["SPORT_MOD"],
-            #     {
-            #         "api_id": SPORT_CMD["Euler"],
-            #         "parameter": {"x": 0, "y": y_val, "z": 0},
-            #     },
-            # )
 
-        
-
-        await asyncio.sleep(0.1) 
+        await asyncio.sleep(0.02) 
 
 def run_lidar_loop():
     lidar_distance()
 
-def run_go2_loop():
-    async def wrapper():
-        conn = await go2_setup()
-        await go2_movement_loop(conn)
-    asyncio.run(wrapper())
+
+async def main_async():
+
+    conn = await go2_setup()
+
+    task1 = asyncio.create_task(go2_movement_loop(conn))
+    task2 = asyncio.create_task(go2_movement_loop2(conn))
+
+    await asyncio.gather(task1, task2)
+
+def start_async_loop():
+    asyncio.run(main_async())
+
 
 def main():
-    #threading.Thread(target=run_lidar_loop, daemon=True).start()
-
-    threading.Thread(target=run_go2_loop, daemon=True).start()
-
     state = AppState()
     app = GStreamerDetectionApp(app_callback, state)
-    app.run()  # blocking
+
+    threading.Thread(
+        target=start_async_loop,
+        daemon=True
+    ).start()
+
+    app.run()
 
 if __name__ == "__main__":
     main()

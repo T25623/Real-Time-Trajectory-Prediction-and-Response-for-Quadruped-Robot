@@ -4,11 +4,34 @@ import time
 import queue
 import numpy as np
 from pathlib import Path
+import cv2
+from functools import partial
 
-from hailo_apps.python.standalone_apps.object_detection import object_detection as od
 
+# Hailo imports
+from hailo_apps.python.core.common.toolbox import (
+    init_input_source,
+    get_labels,
+    load_json_file,
+    preprocess,
+    visualize,
+    FrameRateTracker,
+)
+from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import (
+    extract_detections,
+    draw_detections,
+    inference_result_handler
+)
+from hailo_apps.python.standalone_apps.object_detection.object_detection import (
+    infer,
+)
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+
+# Go2 imports
 from go2_webrtc_driver.webrtc_driver import Go2WebRTCConnection, WebRTCConnectionMethod
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
+
+# -------------------- GLOBALS --------------------
 
 center_x = 0
 center_y = 0
@@ -22,6 +45,7 @@ lidar_queue = queue.Queue(maxsize=5)
 conn = None
 
 
+# -------------------- LIDAR --------------------
 def lidar_callback(message):
     if not lidar_queue.full():
         lidar_queue.put(message)
@@ -47,6 +71,7 @@ def lidar_distance_loop():
         except Exception as e:
             print(f"LiDAR error: {e}")
 
+# -------------------- GO2 MOVEMENT --------------------
 def compute_z():
     deadzone = 0.01
     offset = center_x - 0.5
@@ -143,55 +168,77 @@ async def main_async():
     task2 = asyncio.create_task(go2_movement_loop2(conn))
     await asyncio.gather(task1, task2)
 
-def get_center():
-    tracks = tracker.update(detections_array)
 
-    track = tracks[0]
-    bbox = track.tlbr
-    track_id = track.track_id
-    score = track.score
+# -------------------- Hailo --------------------
+def input_image():
+    resolution = {"size": (1280, 720), "format": "RGB888"}
+    framerate = {"FrameRate": 60}
+    
+    input_queue = queue.Queue()
+    output_queue = queue.Queue()
+    
+    cap, _ = init_input_source("rpi", 1, resolution, framerate)
+    print("here1")
+    labels = "balloon.txt"
+    labels = get_labels(labels)
+    print("here2")
+    config_data = load_json_file("config.json")
+    print("here3")
+    hef_path = "balloonv8s.hef"
 
-    print("ID:", track_id)
-    print("BBox:", bbox)
+    hailo_inference = HailoInfer(hef_path, 1)
+    print(f"hailo_inference: {hailo_inference}")
+    print("here4")
+    height, width, _ = hailo_inference.get_input_shape()
+    print("here5")
+    infer_results = infer(hailo_inference, input_queue, output_queue)
+    print("here6")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Failed to grab frame")
+            break
+        
+        detections = extract_detections(frame, infer_results, config_data)
+        frame_with_detections = draw_detections(detections, frame, labels)
+        print("here")
+
+
+        cv2.imshow("Output", frame_with_detections)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+
     
 
 
+# -------------------- MAIN --------------------
 def main():
-    BASE = Path("/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/testing").expanduser()
-    hef_path = str(BASE / "balloonv8s.hef")
-    labels = str(BASE / "balloon.json")
-    input_src = "rpi"       
-    batch_size = 1
-    output_dir = str(BASE / "output")
-    save_output = False
-    camera_resolution = "sd"
-    output_resolution = "sd"
-    enable_tracking = False
-    show_fps = True
-    frame_rate = 60
-    draw_trail = False
-
-    tracker = BYTETracker()
-
+    # ----- Set hardcoded args -----
+    # BASE = Path("/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/testing").expanduser()
+    # hef_path = str(BASE / "balloonv8s.hef")
+    # labels = str(BASE / "balloon.json")
+    # input_src = "rpi"       # your camera input
+    # batch_size = 1
+    # output_dir = str(BASE / "output")
+    # save_output = False
+    # camera_resolution = "sd"
+    # output_resolution = "sd"
+    # enable_tracking = False
+    # show_fps = True
+    # frame_rate = 60
+    # draw_trail = False
+    
     threading.Thread(target=start_async_loop, daemon=True).start()
     threading.Thread(target=lidar_distance_loop, daemon=True).start()
 
-    threading.Thread(target=get_center, daemon=True).start()
-
-    od.run_inference_pipeline(
-        hef_path,
-        input_src,
-        batch_size,
-        labels,
-        output_dir,
-        save_output=save_output,
-        camera_resolution=camera_resolution,
-        output_resolution=output_resolution,
-        enable_tracking=enable_tracking,
-        show_fps=show_fps,
-        frame_rate=frame_rate,
-        draw_trail=draw_trail
-    )
+    input_image()
 
 if __name__ == "__main__":
     main()
