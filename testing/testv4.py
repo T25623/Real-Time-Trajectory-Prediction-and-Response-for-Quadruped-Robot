@@ -172,38 +172,54 @@ async def main_async():
 # -------------------- Hailo --------------------
 def input_image():
     resolution = {"size": (1280, 720), "format": "RGB888"}
-    framerate = {"FrameRate": 60}
+    batch_size = 1
+    frame_rate = 60
+    framerate = {"FrameRate": frame_rate}
+    save_output=False
+    output_dir=None
+    output_resolution=None
     
     input_queue = queue.Queue()
     output_queue = queue.Queue()
     
-    cap, _ = init_input_source("rpi", 1, resolution, framerate)
-    print("here1")
+    cap, images = init_input_source("rpi", batch_size, resolution, framerate)
     labels = "balloon.txt"
     labels = get_labels(labels)
-    print("here2")
     config_data = load_json_file("config.json")
-    print("here3")
     hef_path = "balloonv8s.hef"
 
-    hailo_inference = HailoInfer(hef_path, 1)
-    print(f"hailo_inference: {hailo_inference}")
-    print("here4")
+    hailo_inference = HailoInfer(hef_path, batch_size)
     height, width, _ = hailo_inference.get_input_shape()
-    print("here5")
-    infer_results = infer(hailo_inference, input_queue, output_queue)
-    print("here6")
 
+    preprocess_thread = threading.Thread(
+        target=preprocess, 
+        args=(images, cap, frame_rate, batch_size, input_queue, width, height),
+        daemon=True
+    )
+
+    infer_thread = threading.Thread(
+        target=infer, 
+        args=(hailo_inference, input_queue, output_queue),
+        daemon=True
+    )
+
+    preprocess_thread.start()
+    infer_thread.start()
+
+    cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
+    
     while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Failed to grab frame")
+        result = output_queue.get()
+
+        if result == None:
             break
         
-        detections = extract_detections(frame, infer_results, config_data)
-        frame_with_detections = draw_detections(detections, frame, labels)
-        print("here")
+        original_frame, inference_result = result
+        
+        detections = extract_detections(original_frame, inference_result, config_data)
+        frame_with_detections = draw_detections(detections, original_frame.copy(), labels)
 
+        frame_with_detections = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
 
         cv2.imshow("Output", frame_with_detections)
 
