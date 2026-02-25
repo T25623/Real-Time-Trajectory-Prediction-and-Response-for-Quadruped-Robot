@@ -173,14 +173,14 @@ async def main_async():
 def input_image():
     resolution = {"size": (1280, 720), "format": "RGB888"}
     batch_size = 1
-    frame_rate = 60
+    frame_rate = 80
     framerate = {"FrameRate": frame_rate}
     save_output=False
     output_dir=None
     output_resolution=None
     
-    input_queue = queue.Queue()
-    output_queue = queue.Queue()
+    input_queue = queue.Queue(maxsize=2)
+    output_queue = queue.Queue(maxsize=2)
     
     cap, images = init_input_source("rpi", batch_size, resolution, framerate)
     labels = "balloon.txt"
@@ -207,12 +207,34 @@ def input_image():
     infer_thread.start()
 
     cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
+
+    prev_frame_time = time.time()
+    new_frame_time = 0
+    fps_time = prev_frame_time
+    fps_total = 0
+    frame_count = 0
+    fps_text = "FPS: 0"
     
     while True:
         result = output_queue.get()
-
         if result == None:
             break
+
+        new_frame_time = time.time()
+
+        fps = 1/(new_frame_time - prev_frame_time + 1e-5)
+        fps_total += fps
+        frame_count += 1 
+        prev_frame_time = new_frame_time
+
+        if new_frame_time >= fps_time + 1:
+            fps_avg = fps_total / frame_count
+            fps_text = f"FPS: {fps_avg:.1f}"
+            fps_total = 0
+            frame_count = 0
+            fps_time = new_frame_time
+            
+        
         
         original_frame, inference_result = result
         
@@ -220,6 +242,8 @@ def input_image():
         frame_with_detections = draw_detections(detections, original_frame.copy(), labels)
 
         frame_with_detections = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
+
+        cv2.putText(frame_with_detections, fps_text, (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
 
         cv2.imshow("Output", frame_with_detections)
 
