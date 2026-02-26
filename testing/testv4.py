@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 import cv2
 from functools import partial
+import math
 
 
 # Hailo imports
@@ -39,10 +40,13 @@ min_distance = 1000
 detected = False
 y = 0
 last_y = 0
-perfrom_action = False
+perform_action = False
 cooldown_timer = 0
 lidar_queue = queue.Queue(maxsize=5)
 conn = None
+target_distance = 0.5
+deadzone = 0.1
+
 
 
 # -------------------- LIDAR --------------------
@@ -78,8 +82,15 @@ def estimate_distance(x0, y0, x1, y1, real_height, focal_length):
     if box_height == 0:
         return None
 
-    distance = (((real_height * focal_length) / box_height) * 4) / 100
-    return distance 
+    distance = (((real_height * focal_length) / box_height) * 2) * 10
+    return distance
+
+def min_distance_in_range(): 
+    if (min_distance >= (target_distance - deadzone)) and (min_distance <= (target_distance + deadzone)):
+        return True
+    else:
+        return False
+
 
 def compute_z():
     global center_x
@@ -89,7 +100,7 @@ def compute_z():
     if abs(offset) < deadzone:
         offset = 0.0
 
-    return offset * 2  
+    return -offset * 2  
 
 def compute_y():
     global center_y, y
@@ -97,18 +108,17 @@ def compute_y():
     if abs(center_y - 0.5) < deadzone:
         return y
 
-    temp_y = (center_y - 0.5) * 0.02
-    
+    temp_y = (center_y - 0.5) * 0.2
     
     if -0.4 <= (y + temp_y) <= 0.4:
         y += temp_y
+    else:
+        y = round(y,1)
     
     return y
 
 def compute_x():
-    global min_distance, perfrom_action
-    deadzone = 0.1
-    target_distance = 0.7
+    global min_distance
     x = 0.0
     if min_distance < 2:
         if min_distance < target_distance - deadzone:
@@ -126,8 +136,8 @@ def action_cooldown_check(cooldown_seconds=5):
         return True
     return False
 
-def go2_interact(action):
-    global perfrom_action, conn
+async def go2_interact(conn, action):
+    global perform_action
     conn.datachannel.pub_sub.publish_request_no_wait(
         RTC_TOPIC["SPORT_MOD"],
         {
@@ -135,51 +145,83 @@ def go2_interact(action):
             "parameter": {"data": True}
         }
     )
-    
-    perfrom_action = False
+    perform_action = False
 
 async def go2_setup():
     global conn
     conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalAP)
     await conn.connect()
     await conn.datachannel.disableTrafficSaving(True)
+    await conn.datachannel.pub_sub.publish_request_new(
+        RTC_TOPIC["SPORT_MOD"],
+        {"api_id": SPORT_CMD["SpeedLevel"], "parameter": {"data": 3}},
+    )
     print("Go2 setup complete")
     return conn
 
 async def go2_movement_loop(conn):
+    done = False
     while True:
-        if detected:
+        if detected and not perform_action:
+            done = False
             z = compute_z()
             x_val = compute_x()
-        else:
-            z = 0.0
-            x_val = 0.0
-
-        if detected and abs(min_distance - 0.5) <= 0.1:
-            if action_cooldown_check():
-                print("Hello")
-        else:
-            print(f"X val: {x_val}")
-            print(f"z: {z}")
             conn.datachannel.pub_sub.publish_request_no_wait(
                 RTC_TOPIC["SPORT_MOD"],
                 {"api_id": SPORT_CMD["Move"], "parameter": {"x": x_val, "y": 0, "z": z}}
             )
-        await asyncio.sleep(0.02)
+        elif perform_action and not done:
+            conn.datachannel.pub_sub.publish_request_no_wait(
+                RTC_TOPIC["SPORT_MOD"],
+                {"api_id": SPORT_CMD["Move"], "parameter": {"x": 0, "y": 0, "z": 0}}
+            )
+            done = True
+
+        await asyncio.sleep(0.1)
 
 async def go2_movement_loop2(conn):
-    global last_y
+    global last_y, y
     last_y = 0.0
+    done = False
     while True:
-        if detected:
+        if detected and not perform_action:
+            done = False
             y_val = compute_y()
             last_y = y_val
-            print(f"Y val: {y_val}")
+            
             conn.datachannel.pub_sub.publish_request_no_wait(
                 RTC_TOPIC["SPORT_MOD"],
                 {"api_id": SPORT_CMD["Euler"], "parameter": {"x": 0, "y": y_val, "z": 0}}
             )
-        await asyncio.sleep(0.02)
+        elif perform_action and not done:
+            conn.datachannel.pub_sub.publish_request_no_wait(
+                RTC_TOPIC["SPORT_MOD"],
+                {"api_id": SPORT_CMD["Euler"], "parameter": {"x": 0, "y": 0, "z": 0}}
+            )
+            done = True
+            y = 0
+
+        await asyncio.sleep(0.1)
+
+async def action_task(conn):
+    global perform_action
+    action_duration = 2 
+    cooldown = 5            
+    last_action_time = 0
+
+    while True:
+        if detected and min_distance_in_range():
+            now = time.time()
+            if now - last_action_time >= cooldown:
+                perform_action = True
+                conn.datachannel.pub_sub.publish_request_no_wait(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {"api_id": SPORT_CMD["Hello"], "parameter": {"data": True}}
+                )
+                await asyncio.sleep(action_duration)
+                perform_action = False
+                last_action_time = now
+        await asyncio.sleep(0.3)
 
 def start_async_loop():
     asyncio.run(main_async())
@@ -188,15 +230,16 @@ async def main_async():
     conn = await go2_setup()
     task1 = asyncio.create_task(go2_movement_loop(conn))
     task2 = asyncio.create_task(go2_movement_loop2(conn))
-    await asyncio.gather(task1, task2)
+    task3 = asyncio.create_task(action_task(conn))
+    await asyncio.gather(task1, task2, task3)
 
 
 # -------------------- Hailo --------------------
 def input_image():
-    global center_x, center, detected
+    global center_x, center_y, detected, min_distance
     resolution = {"size": (1280, 720), "format": "RGB888"}
     batch_size = 1
-    frame_rate = 80
+    frame_rate = 60
     framerate = {"FrameRate": frame_rate}
     save_output=False
     output_dir=None
@@ -206,10 +249,10 @@ def input_image():
     output_queue = queue.Queue(maxsize=2)
     
     cap, images = init_input_source("rpi", batch_size, resolution, framerate)
-    labels = "balloon.txt"
+    labels = "/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/testing/balloon.txt"
     labels = get_labels(labels)
-    config_data = load_json_file("config.json")
-    hef_path = "balloonv8s.hef"
+    config_data = load_json_file("/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/testing/config.json")
+    hef_path = "/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/testing/balloonv8s.hef"
 
     hailo_inference = HailoInfer(hef_path, batch_size)
     height, width, _ = hailo_inference.get_input_shape()
@@ -229,7 +272,7 @@ def input_image():
     preprocess_thread.start()
     infer_thread.start()
 
-    cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
+    # cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
 
     prev_frame_time = time.time()
     new_frame_time = 0
@@ -262,31 +305,33 @@ def input_image():
         detections = extract_detections(original_frame, inference_result, config_data)
         bbox = detections['detection_boxes']
         if len(bbox) > 0:
-            x0 = bbox[0][0]
-            y0 = bbox[0][1]
-            x1 = bbox[0][2]
-            y1 = bbox[0][3]
+            y0 = bbox[0][0]
+            x0 = bbox[0][1]
+            y1 = bbox[0][2]
+            x1 = bbox[0][3]
 
-            estimate_distance(x0, y0, x1, y1, 30, 0.275)
+            min_distance = estimate_distance(x0, y0, x1, y1, 30, 0.275)
             detected = True
 
-            center_x = ((x0 + x1) / 2) / 1280
-            center_y = ((y0 + y1) / 2) / 720
+            center_x = ((y0 + y1) / 2) / 1280
+            center_y = ((x0 + x1) / 2) / 720
+        else:
+            detected = False
 
         frame_with_detections = draw_detections(detections, original_frame.copy(), labels)
 
         frame_with_detections = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
 
-        cv2.putText(frame_with_detections, fps_text, (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
+        # cv2.putText(frame_with_detections, fps_text, (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
 
-        cv2.imshow("Output", frame_with_detections)
+        # cv2.imshow("Output", frame_with_detections)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     break
+        
 
     cap.release()
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
 
 
     
@@ -294,23 +339,9 @@ def input_image():
 
 # -------------------- MAIN --------------------
 def main():
-    # ----- Set hardcoded args -----
-    # BASE = Path("/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/testing").expanduser()
-    # hef_path = str(BASE / "balloonv8s.hef")
-    # labels = str(BASE / "balloon.json")
-    # input_src = "rpi"       # your camera input
-    # batch_size = 1
-    # output_dir = str(BASE / "output")
-    # save_output = False
-    # camera_resolution = "sd"
-    # output_resolution = "sd"
-    # enable_tracking = False
-    # show_fps = True
-    # frame_rate = 60
-    # draw_trail = False
     
     threading.Thread(target=start_async_loop, daemon=True).start()
-    threading.Thread(target=lidar_distance_loop, daemon=True).start()
+    # threading.Thread(target=lidar_distance_loop, daemon=True).start()
 
     input_image()
 
