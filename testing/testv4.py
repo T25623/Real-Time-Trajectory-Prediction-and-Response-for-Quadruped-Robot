@@ -72,24 +72,41 @@ def lidar_distance_loop():
             print(f"LiDAR error: {e}")
 
 # -------------------- GO2 MOVEMENT --------------------
+def estimate_distance(x0, y0, x1, y1, real_height, focal_length):
+    box_height = abs(y1 - y0)
+
+    if box_height == 0:
+        return None
+
+    distance = (((real_height * focal_length) / box_height) * 4) / 100
+    return distance 
+
 def compute_z():
-    deadzone = 0.01
+    global center_x
+    deadzone = 0.01 
+
     offset = center_x - 0.5
     if abs(offset) < deadzone:
         offset = 0.0
-    return offset * 2
+
+    return offset * 2  
 
 def compute_y():
-    global y
+    global center_y, y
     deadzone = 0.01
     if abs(center_y - 0.5) < deadzone:
         return y
+
     temp_y = (center_y - 0.5) * 0.02
+    
+    
     if -0.4 <= (y + temp_y) <= 0.4:
         y += temp_y
+    
     return y
 
 def compute_x():
+    global min_distance, perfrom_action
     deadzone = 0.1
     target_distance = 0.7
     x = 0.0
@@ -98,6 +115,7 @@ def compute_x():
             x = -min_distance
         elif min_distance > target_distance + deadzone:
             x = min_distance
+
     return x / 4
 
 def action_cooldown_check(cooldown_seconds=5):
@@ -112,8 +130,12 @@ def go2_interact(action):
     global perfrom_action, conn
     conn.datachannel.pub_sub.publish_request_no_wait(
         RTC_TOPIC["SPORT_MOD"],
-        {"api_id": SPORT_CMD[action], "parameter": {"data": True}}
+        {
+            "api_id": SPORT_CMD[action], 
+            "parameter": {"data": True}
+        }
     )
+    
     perfrom_action = False
 
 async def go2_setup():
@@ -171,6 +193,7 @@ async def main_async():
 
 # -------------------- Hailo --------------------
 def input_image():
+    global center_x, center, detected
     resolution = {"size": (1280, 720), "format": "RGB888"}
     batch_size = 1
     frame_rate = 80
@@ -233,12 +256,23 @@ def input_image():
             fps_total = 0
             frame_count = 0
             fps_time = new_frame_time
-            
-        
         
         original_frame, inference_result = result
         
         detections = extract_detections(original_frame, inference_result, config_data)
+        bbox = detections['detection_boxes']
+        if len(bbox) > 0:
+            x0 = bbox[0][0]
+            y0 = bbox[0][1]
+            x1 = bbox[0][2]
+            y1 = bbox[0][3]
+
+            estimate_distance(x0, y0, x1, y1, 30, 0.275)
+            detected = True
+
+            center_x = ((x0 + x1) / 2) / 1280
+            center_y = ((y0 + y1) / 2) / 720
+
         frame_with_detections = draw_detections(detections, original_frame.copy(), labels)
 
         frame_with_detections = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
