@@ -44,7 +44,7 @@ perform_action = False
 cooldown_timer = 0
 lidar_queue = queue.Queue(maxsize=5)
 conn = None
-target_distance = 0.5
+target_distance = 0.3
 deadzone = 0.1
 
 
@@ -108,7 +108,7 @@ def compute_y():
     if abs(center_y - 0.5) < deadzone:
         return y
 
-    temp_y = (center_y - 0.5) * 0.2
+    temp_y = (center_y - 0.5) * 0.02
     
     if -0.4 <= (y + temp_y) <= 0.4:
         y += temp_y
@@ -166,6 +166,7 @@ async def go2_movement_loop(conn):
             done = False
             z = compute_z()
             x_val = compute_x()
+            print("Move")
             conn.datachannel.pub_sub.publish_request_no_wait(
                 RTC_TOPIC["SPORT_MOD"],
                 {"api_id": SPORT_CMD["Move"], "parameter": {"x": x_val, "y": 0, "z": z}}
@@ -177,7 +178,7 @@ async def go2_movement_loop(conn):
             )
             done = True
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
 
 async def go2_movement_loop2(conn):
     global last_y, y
@@ -185,6 +186,7 @@ async def go2_movement_loop2(conn):
     done = False
     while True:
         if detected and not perform_action:
+            print("Pitch")
             done = False
             y_val = compute_y()
             last_y = y_val
@@ -201,27 +203,35 @@ async def go2_movement_loop2(conn):
             done = True
             y = 0
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
 
 async def action_task(conn):
     global perform_action
-    action_duration = 2 
+    action_duration = 1
     cooldown = 5            
     last_action_time = 0
-
+    response = {'type': 'res', 'topic': 'rt/api/sport/response', 'data': {'header': {'identity': {'api_id': 1016, 'id': 507172245}, 'status': {'code': 4201}}, 'data': ''}}
     while True:
         if detected and min_distance_in_range():
             now = time.time()
             if now - last_action_time >= cooldown:
                 perform_action = True
-                conn.datachannel.pub_sub.publish_request_no_wait(
-                    RTC_TOPIC["SPORT_MOD"],
-                    {"api_id": SPORT_CMD["Hello"], "parameter": {"data": True}}
-                )
-                await asyncio.sleep(action_duration)
+                print("Hello")
+                while True:
+                    # await asyncio.sleep(action_duration)
+                    response = await conn.datachannel.pub_sub.publish_request_new(
+                        RTC_TOPIC["SPORT_MOD"],
+                        {"api_id": SPORT_CMD["FrontPounce"], "parameter": {"data": True}}
+                    )
+                    print(f"Response: {response}")
+                    
+                    if response["data"]["header"]["status"]["code"] == 0:
+                        break
+
+                print("end hello")
                 perform_action = False
                 last_action_time = now
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.1)
 
 def start_async_loop():
     asyncio.run(main_async())
@@ -272,7 +282,7 @@ def input_image():
     preprocess_thread.start()
     infer_thread.start()
 
-    # cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
 
     prev_frame_time = time.time()
     new_frame_time = 0
@@ -322,16 +332,16 @@ def input_image():
 
         frame_with_detections = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
 
-        # cv2.putText(frame_with_detections, fps_text, (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
+        cv2.putText(frame_with_detections, fps_text, (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
 
-        # cv2.imshow("Output", frame_with_detections)
+        cv2.imshow("Output", frame_with_detections)
 
-        # if cv2.waitKey(1) & 0xFF == ord('q'):
-        #     break
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
         
 
     cap.release()
-    # cv2.destroyAllWindows()
+    cv2.destroyAllWindows()
 
 
     
