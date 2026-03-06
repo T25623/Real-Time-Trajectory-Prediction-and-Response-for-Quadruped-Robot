@@ -108,7 +108,7 @@ def compute_y():
     if abs(center_y - 0.5) < deadzone:
         return y
 
-    temp_y = (center_y - 0.5) * 0.02
+    temp_y = (center_y - 0.5) * 0.2
     
     if -0.4 <= (y + temp_y) <= 0.4:
         y += temp_y
@@ -153,8 +153,11 @@ async def go2_setup():
     await conn.connect()
     await conn.datachannel.disableTrafficSaving(True)
     await conn.datachannel.pub_sub.publish_request_new(
-        RTC_TOPIC["SPORT_MOD"],
-        {"api_id": SPORT_CMD["SpeedLevel"], "parameter": {"data": 3}},
+        RTC_TOPIC["MOTION_SWITCHER"], 
+        {
+            "api_id": 1002,
+            "parameter": {"name": "normal"}
+        }
     )
     print("Go2 setup complete")
     return conn
@@ -162,75 +165,110 @@ async def go2_setup():
 async def go2_movement_loop(conn):
     done = False
     while True:
-        if detected and not perform_action:
-            done = False
-            z = compute_z()
-            x_val = compute_x()
-            print("Move")
-            conn.datachannel.pub_sub.publish_request_no_wait(
-                RTC_TOPIC["SPORT_MOD"],
-                {"api_id": SPORT_CMD["Move"], "parameter": {"x": x_val, "y": 0, "z": z}}
-            )
-        elif perform_action and not done:
-            conn.datachannel.pub_sub.publish_request_no_wait(
-                RTC_TOPIC["SPORT_MOD"],
-                {"api_id": SPORT_CMD["Move"], "parameter": {"x": 0, "y": 0, "z": 0}}
-            )
-            done = True
+        try:
+            if detected and not perform_action:
+                done = False
+                z = compute_z()
+                x_val = compute_x()
+                print("Move")
+                st = time.time()
+                resp = await conn.datachannel.pub_sub.publish_request_new(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {"api_id": SPORT_CMD["Move"], "parameter": {"x": x_val, "y": 0, "z": z}}
+                )
+                response = await conn.datachannel.pub_sub.publish_request_new(
+                    RTC_TOPIC["MOTION_SWITCHER"], 
+                    {"api_id": 1001}
+                )
+                print(f"current motion_switcher status: {response}")
+                print(resp)
+                et = time.time()
+                print(f"move time: {et - st}")
+            elif perform_action and not done:
+                await conn.datachannel.pub_sub.publish_request_new(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {"api_id": SPORT_CMD["Move"], "parameter": {"x": 0, "y": 0, "z": 0}}
+                )
+                done = True
 
-        await asyncio.sleep(0.05)
+        except Exception as e:
+            print("Movement loop error:", e)
+
+        await asyncio.sleep(0.5)
 
 async def go2_movement_loop2(conn):
     global last_y, y
     last_y = 0.0
     done = False
     while True:
-        if detected and not perform_action:
-            print("Pitch")
-            done = False
-            y_val = compute_y()
-            last_y = y_val
-            
-            conn.datachannel.pub_sub.publish_request_no_wait(
-                RTC_TOPIC["SPORT_MOD"],
-                {"api_id": SPORT_CMD["Euler"], "parameter": {"x": 0, "y": y_val, "z": 0}}
-            )
-        elif perform_action and not done:
-            conn.datachannel.pub_sub.publish_request_no_wait(
-                RTC_TOPIC["SPORT_MOD"],
-                {"api_id": SPORT_CMD["Euler"], "parameter": {"x": 0, "y": 0, "z": 0}}
-            )
-            done = True
-            y = 0
+        try:
+            if detected and not perform_action:
+                print("Pitch")
+                done = False
+                y_val = compute_y()
+                last_y = y_val
+                st = time.time()
+                resp = await conn.datachannel.pub_sub.publish_request_new(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {"api_id": SPORT_CMD["Euler"], "parameter": {"x": 0, "y": y_val, "z": 0}}
+                )
+                print(resp)
+                et = time.time()
+                print(f"euler time: {et - st}")
+            elif perform_action and not done:
+                await conn.datachannel.pub_sub.publish_request_new(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {"api_id": SPORT_CMD["Euler"], "parameter": {"x": 0, "y": 0, "z": 0}}
+                )
+                done = True
+                y = 0
+        except Exception as e:
+            print("Movement loop error:", e)
 
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.5)
+
 
 async def action_task(conn):
     global perform_action
-    action_duration = 1
-    cooldown = 5            
-    response = {'type': 'res', 'topic': 'rt/api/sport/response', 'data': {'header': {'identity': {'api_id': 1016, 'id': 507172245}, 'status': {'code': 4201}}, 'data': ''}}
+
+
     while True:
-        if detected and min_distance_in_range():
+        if detected and min_distance_in_range() and not perform_action:
             perform_action = True
             print("Hello")
-            start = time.time()
-            while True:
-                # await asyncio.sleep(action_duration)
-                response = await conn.datachannel.pub_sub.publish_request_new(
-                    RTC_TOPIC["SPORT_MOD"],
-                    {"api_id": SPORT_CMD["FrontPounce"], "parameter": {"data": True}}
-                )
-                print(f"Response: {response}")
-                    
-                if response["data"]["header"]["status"]["code"] == 0:
-                    break
-                
-            end = time.time()
-            print(f"ttpa: {end - start}")
-            print("end hello")
+
+            start_time = time.time()
+            success = False
+            await conn.datachannel.pub_sub.publish_request_new(
+                RTC_TOPIC["SPORT_MOD"],
+                {"api_id": SPORT_CMD["Move"], "parameter": {"x": 0, "y": 0, "z": 0}}
+            )
+
+            await conn.datachannel.pub_sub.publish_request_new(
+                RTC_TOPIC["SPORT_MOD"],
+                {"api_id": SPORT_CMD["Euler"], "parameter": {"x": 0, "y": 0, "z": 0}}
+            )
+            await asyncio.sleep(1.2)
+            st = time.time()
+            await conn.datachannel.pub_sub.publish_request_new(
+                RTC_TOPIC["SPORT_MOD"],
+                {"api_id": SPORT_CMD["Hello"], "parameter": {"data": True}}
+            )
+            et = time.time()
+            print(f"action time: {et - st}")
+            response = await conn.datachannel.pub_sub.publish_request_new(
+                RTC_TOPIC["MOTION_SWITCHER"], 
+                {"api_id": 1001}
+            )
+            print(f"current motion_switcher status: {response}")
+
+
+            print("Hello done")
             perform_action = False
-        await asyncio.sleep(0.1)
+
+
+        await asyncio.sleep(0.5)
+       
 
 def start_async_loop():
     asyncio.run(main_async())
@@ -239,8 +277,8 @@ async def main_async():
     conn = await go2_setup()
     task1 = asyncio.create_task(go2_movement_loop(conn))
     task2 = asyncio.create_task(go2_movement_loop2(conn))
-    # task3 = asyncio.create_task(action_task(conn))
-    await asyncio.gather(task1, task2)
+    task3 = asyncio.create_task(action_task(conn))
+    await asyncio.gather(task1, task2, task3)
 
 
 # -------------------- Hailo --------------------
