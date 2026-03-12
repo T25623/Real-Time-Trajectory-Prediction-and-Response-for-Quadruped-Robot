@@ -1,67 +1,82 @@
-from go2_webrtc_driver.webrtc_driver import Go2WebRTCConnection, WebRTCConnectionMethod
-from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD 
+from unitree_webrtc_connect.webrtc_driver import UnitreeWebRTCConnection, WebRTCConnectionMethod
+from unitree_webrtc_connect.constants import RTC_TOPIC, SPORT_CMD 
 import asyncio
 import re
-
-async def connection_setup(connection_method=WebRTCConnectionMethod.LocalAP, ip=None, serial_number=None, username=None, password=None):
-    conn = None
-
-    match connection_method:
-        case WebRTCConnectionMethod.LocalAP:
-            conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalAP)
-        case WebRTCConnectionMethod.LocalSTA:
-            if valid_serial_number(serial_number):
-                conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalSTA, serialNumber=serial_number)
-            elif valid_ip(ip):
-                conn = Go2WebRTCConnection(WebRTCConnectionMethod.LocalSTA, ip=ip)
-        case WebRTCConnectionMethod.Remote:
-            conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.Remote, serialNumber=serial_number, username=username, password=password)
-
-    await conn.connect()
-    await motion_switcher(conn)
+from enum import Enum
+import queue
+import numpy as np
+import go2_utils as utils
 
 
-async def motion_switcher(conn, timeout=10):
+class LidarDecoder(Enum):
+    Native = 0
+    Libvoxel = 1
 
-    while True:
-        response = await conn.datachannel.pub_sub.publish_request_new(
-            RTC_TOPIC["MOTION_SWITCHER"], 
-            {"api_id": 1001}
+
+class WebRTCConnection:
+    def __init__(self):
+        self.conn = None
+        self.lidar_queue = None
+        self.state_of_charge = None
+        self.orientation = None
+        self.motor_temperature_list = None
+        self.lidar_origin = None
+    
+    async def connection_setup(self, connection_method=WebRTCConnectionMethod.LocalAP,  ip=None, serial_number=None, username=None, password=None):
+        match connection_method:
+            case WebRTCConnectionMethod.LocalAP:
+                self.conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.LocalAP)
+            case WebRTCConnectionMethod.LocalSTA:
+                if utils.valid_serial_number(serial_number):
+                    self.conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.LocalSTA, serialNumber=serial_number)
+                elif utils.valid_ip(ip):
+                    self.conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.LocalSTA, ip=ip)
+            case WebRTCConnectionMethod.Remote:
+                self.conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.Remote, serialNumber=serial_number, username=username, password=password)
+
+        await self.conn.connect()
+        await self.conn.datachannel.disableTrafficSaving(True)
+        # await motion_switcher(self.conn)
+
+    def lidar_sensor_activate(self, lidar_on=True):
+        if lidar_on:
+            lidar_on = "on"
+        else:
+            lidar_on = "off"
+
+        self.conn.datachannel.pub_sub.publish_without_callback("rt/utlidar/switch", "on")
+
+    def lidar_data_type(self, decoder_type=0):
+        if decoder_type == 0:
+            decoder_type = "native"
+        else:
+            decoder_type = "libvoxel"
+
+        self.conn.datachannel.set_decoder(decoder_type=decoder_type)
+    
+    def lidar_setup(self, lidar_on, decoder_type):
+        self.lidar_data_type(decoder_type)
+        self.lidar_sensor_activate(lidar_on)
+        
+        self.conn.datachannel.pub_sub.subscribe(
+           "rt/utlidar/voxel_map_compressed", self.lidar_callback
+        )
+    
+    def state_call(self):
+        self.conn.datachannel.pub_sub.subscribe(
+           "rt/lf/lowstate", self.state_callback
         )
 
-        if response['data']['header']['status']['code'] == 0:
-            data = json.loads(response['data']['data'])
-            
-            if data['name'] == "normal":
-                break
-            else:
-                await conn.datachannel.pub_sub.publish_request_new(
-                    RTC_TOPIC["MOTION_SWITCHER"], 
-                    {
-                        "api_id": 1002,
-                        "parameter": {"name": "normal"}
-                    }
-                )
-                await asyncio.sleep(5)
-    
- 
+    def state_callback(self, message):
+        self.orientation = utils.orientation_calculation(message)
+        self.state_of_charge = utils.battery_state_of_charge_data(message)
+        self.motor_temperature_list = utils.motor_temperature_data(message)
 
-def valid_serial_number(serial_number):
-    valid = False
-    if "B42D2000" in serial_number:
-        print("Valid Serial Number")
-        valid = True
-    elif serial_number == None:
-        continue
-    else:
-        print("Invalid Serial Number")
-    
-    return valid
+    def lidar_callback(self, message):
+        self.lidar_queue = message 
+        self.lidar_origin = utils.lidar_origin_calculation(message)
+        print("got lidar data")
 
-def valid_ip(ip):
-    valid = False
-    if ip != None:
-        valid = True
-    else:
-        print("Invalid IP")
+
+        
         

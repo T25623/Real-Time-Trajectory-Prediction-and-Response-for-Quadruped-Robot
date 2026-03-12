@@ -1,0 +1,136 @@
+{
+       'type': 'msg', 
+       'topic': 'rt/lf/lowstate', 
+       'data': {'
+              imu_state': {
+                     'rpy': [0.01285, 0.016679, -1.454937]}, 
+                     'motor_state': [
+                            {
+                                   'q': 0.010347, 
+                                   'temperature': 45, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]}, 
+                            {
+                                   'q': 0.819657, 
+                                   'temperature': 30, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            }, 
+                            {
+                                   'q': -1.508698, 
+                                   'temperature': 36, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            }, 
+                            {
+                                   'q': -0.006805, 
+                                   'temperature': 44, 
+                                   'lost': 0, 'reserve': [0, 667]
+                            }, {
+                                   'q': 0.764643, 
+                                   'temperature': 31, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            }, 
+                            {
+                                   'q': -1.54511, 
+                                   'temperature': 40, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            }, 
+                            {
+                                   'q': 0.016852, 
+                                   'temperature': 44, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            }, 
+                            {
+                                   'q': 0.812052, 
+                                   'temperature': 31, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            },
+                            {
+                                   'q': -1.510531, 
+                                   'temperature': 35, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            }, 
+                            {
+                                   'q': -0.036956, 
+                                   'temperature': 42, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            }, 
+                            {
+                                   'q': 0.773206,
+                                   'temperature': 31, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            },
+                            {
+                                   'q': -1.526028, 
+                                   'temperature': 38, 
+                                   'lost': 0, 
+                                   'reserve': [0, 667]
+                            }, 
+                            {
+                                   'q': 0, 
+                                   'temperature': 0, 
+                                   'lost': 0, 
+                                   'reserve': [0, 0]
+                            }, 
+                            {
+                                   'q': 0, 
+                                   'temperature': 0, 
+                                   'lost': 0, 
+                                   'reserve': [0, 0]
+                            }, 
+                            {
+                                   'q': 0, 
+                                   'temperature': 0, 
+                                   'lost': 0, 
+                                   'reserve': [0, 0]
+                            }, 
+                            {
+                                   'q': 0, 
+                                   'temperature': 0, 
+                                   'lost': 0, 
+                                   'reserve': [0, 0]
+                            }, 
+                            {
+                                   'q': 0, 
+                                   'temperature': 0, 
+                                   'lost': 0, 
+                                   'reserve': [0, 0]
+                            }, 
+                            {
+                                   'q': 0, 
+                                   'temperature': 0,
+                                   'lost': 0,
+                                   'reserve': [0, 0]}, 
+                                   {'q': 0, 
+                                   'temperature': 0, 
+                                   'lost': 0, 
+                                   'reserve': [0, 0]
+                            }, 
+                            {
+                                   'q': 0, 
+                                   'temperature': 0, 
+                                   'lost': 0, 
+                                   'reserve': [0, 0]
+                            }
+                     ],
+                                   
+                     'bms_state': {
+                            'version_high': 1, 
+                            'version_low': 14, 
+                            'soc': 51, 
+                            'current': -3016, 
+                            'cycle': 13, 
+                            'bq_ntc': [31, 28], 
+                            'mcu_ntc': [32, 31]
+                            }
+                            , 'foot_force': [108, 96, 104, 100], 
+                            'temperature_ntc1': 45, 
+                            'power_v': 28.428432}}
