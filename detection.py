@@ -45,6 +45,9 @@ class DetectionPipeline:
         self.center_y = 0
         self.predicted_center_x = 0
         self.predicted_center_y = 0
+        self.future_center_x = 0
+        self.future_center_y = 0
+        self.future_distance = 0
         self.detected = False
         self.min_distance = 0
         self.predicted_distance = 0
@@ -91,7 +94,7 @@ class DetectionPipeline:
             self.center_y = ((x0 + x1) / 2) / self.resolution[1]
             
             # Calculate distance to detected object
-            self.min_distance = self.estimate_distance(x0, y0, x1, y1, 22, 0.275, 12)
+            self.min_distance = self.estimate_distance(x0, y0, x1, y1, 26, 0.275, 12)
 
             # Create array for kalman filter of center x, center y, and distance 
             z = np.array([
@@ -114,7 +117,7 @@ class DetectionPipeline:
             self.detected = False
 
 
-    def run(self):
+    def run(self, predict_steps=3):
         cap, images = self.setup_camera()
         height, width, _ = self.load_model()
         self.start_threads(images, cap, width, height)
@@ -150,12 +153,20 @@ class DetectionPipeline:
 
                 if self.kalman_filter != None and self.detected:
 
-                    future_positions = self.kalman_filter.predict_n_steps(10)
+                    future_positions = self.kalman_filter.predict_n_steps(predict_steps)
                     for px, py, pz in future_positions:
+                        self.future_center_x = px
+                        self.future_center_y = py
+                        self.future_distance = pz
                         px = int(px * self.resolution[0])
                         py = int(py * self.resolution[1])
                         radius = int(max(1, (pz**-1)*5))
                         cv2.circle(frame, (px, py), radius, (255,0,255), -1)
+                
+                elif not self.detected:
+                    self.future_center_x = 0
+                    self.future_center_y = 0
+                    self.future_distance = 0
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 if self.FPS_counter:

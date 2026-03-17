@@ -1,5 +1,6 @@
 import go2_utils as utils
 import asyncio
+from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 
 async def go2_movement(conn, x, y, z):
     response = await conn.datachannel.pub_sub.publish_request_new(
@@ -25,6 +26,11 @@ async def perform_action(conn, action):
 
     return response
 
+async def move_pitch(conn, move_x, move_y, move_z, pitch_x, pitch_y, pitch_z):
+    move_task = asyncio.create_task(go2_movement(conn, move_x, move_y, move_z))
+    pitch_task = asyncio.create_task(go2_euler(conn, pitch_x, pitch_y, pitch_z))
+
+    await asyncio.gather(move_task, pitch_task)
 
 async def system_error_reposnse(conn, status_list):
     bms_data = status_list["data"]["bms"]
