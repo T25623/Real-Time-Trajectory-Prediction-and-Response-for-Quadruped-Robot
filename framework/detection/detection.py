@@ -22,12 +22,12 @@ import queue
 import threading
 import cv2
 import time
-from kalman_filter import KalmanFilter
+from framework.detection.kalman_filter import KalmanFilter
 import numpy as np
-
+from collections import deque
 
 class DetectionPipeline:
-    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter.xyz_predict(), FPS_counter_on = True) -> None:
+    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter.xyz_predict(), FPS_counter = True, trail_length=30) -> None:
         # Camera config
         self.source = source
         self.resolution = resolution
@@ -50,12 +50,16 @@ class DetectionPipeline:
         self.future_distance = 0
         self.detected = False
         self.min_distance = 0
+        self.predicted_distances = deque(maxlen=round(framerate/2))
         self.predicted_distance = 0
         
         # Video Stream Queues
-        self.FPS_counter = FPS_counter_on
+        self.FPS_counter = FPS_counter
         self.input_queue = queue.Queue(maxsize=2)
         self.output_queue = queue.Queue(maxsize=2)
+        self.display_queue = queue.Queue(maxsize=1)
+
+        self.trail = deque(maxlen=trail_length)
 
         self.kalman_filter = kalman_filter
 
@@ -73,7 +77,19 @@ class DetectionPipeline:
     def start_threads(self, images, cap, width, height):
         threading.Thread(target=preprocess, daemon=True, args=(images, cap, self.framerate, self.batch_size, self.input_queue, width, height)).start()
         threading.Thread(target=infer, daemon=True, args=(self.hailo_inference, self.input_queue, self.output_queue)).start()
+        threading.Thread(target=self._display_loop, daemon=True).start()
 
+    def _display_loop(self):
+        cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
+        while True:
+            frame = self.display_queue.get()
+            if frame is None:
+                break
+            cv2.imshow("Output", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        cv2.destroyAllWindows()
+    
     def estimate_distance(self, x0, y0, x1, y1, real_height, focal_length, scale_factor):
         # Calculate area of detected object
         box_height = abs(y1 - y0)
@@ -92,9 +108,12 @@ class DetectionPipeline:
             # Calculate center of bounding box
             self.center_x = ((y0 + y1) / 2) / self.resolution[0]
             self.center_y = ((x0 + x1) / 2) / self.resolution[1]
+            px = int(self.center_x * self.resolution[0])
+            py = int(self.center_y * self.resolution[1])
+            self.trail.append((px, py))
             
             # Calculate distance to detected object
-            self.min_distance = self.estimate_distance(x0, y0, x1, y1, 26, 0.275, 12)
+            self.min_distance = self.estimate_distance(x0, y0, x1, y1, 24, 0.275, 15)
 
             # Create array for kalman filter of center x, center y, and distance 
             z = np.array([
@@ -116,13 +135,27 @@ class DetectionPipeline:
         else:
             self.detected = False
 
+    def draw_trail(self, frame, trail_list):
+        total = len(trail_list)
+        for i in range(1, total):
+            alpha = i / total
+            color = (
+                int(0   * (1 - alpha) + 0   * alpha),  # B
+                int(255 * (1 - alpha) + 100 * alpha),  # G
+                int(0   * (1 - alpha) + 255 * alpha),  # R
+            )
+            thickness = max(1, int(3 * alpha))
+            cv2.line(frame, trail_list[i - 1], trail_list[i], color, thickness)
+            cv2.circle(frame, trail_list[i], max(1, int(4 * alpha)), color, -1)
+        return frame
 
-    def run(self, predict_steps=3):
+    
+
+    def run(self, predict_steps=20):
         cap, images = self.setup_camera()
         height, width, _ = self.load_model()
         self.start_threads(images, cap, width, height)
 
-        cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
         if self.FPS_counter:
             prev_frame_time = time.time()
             fps_time = prev_frame_time 
@@ -151,16 +184,19 @@ class DetectionPipeline:
                 frame = draw_detections(detections, original_frame.copy(), self.labels)
                 pz = 0
 
-                if self.kalman_filter != None and self.detected:
+                if self.kalman_filter is not None and self.detected:
 
                     future_positions = self.kalman_filter.predict_n_steps(predict_steps)
+                    self.future_center_x = future_positions[-1][0]
+                    self.future_center_y = future_positions[-1][1]
+                    
+                    self.predicted_distances.append(future_positions[-1][2])
+                    self.future_distance = min(self.predicted_distances)
                     for px, py, pz in future_positions:
-                        self.future_center_x = px
-                        self.future_center_y = py
-                        self.future_distance = pz
                         px = int(px * self.resolution[0])
                         py = int(py * self.resolution[1])
-                        radius = int(max(1, (pz**-1)*5))
+                        
+                        radius = int(max(1, (pz**-1)*3))
                         cv2.circle(frame, (px, py), radius, (255,0,255), -1)
                 
                 elif not self.detected:
@@ -169,16 +205,17 @@ class DetectionPipeline:
                     self.future_distance = 0
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+                frame = self.draw_trail(frame, self.trail)
+
                 if self.FPS_counter:
                     cv2.putText(frame, fps_text, (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
-                    cv2.putText(frame, f"Distance {self.min_distance}", (7, 160), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
-                    cv2.putText(frame, f"Pistance {pz}", (7, 250), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
+                    cv2.putText(frame, f"Distance {round(self.min_distance,2)}", (7, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 3, cv2.LINE_AA)
+                    cv2.putText(frame, f"Predicted Distance {round(self.future_distance,2)}", (7, 140), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 3, cv2.LINE_AA)
 
-                cv2.imshow("Output", frame)
-
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+                if not self.display_queue.full():
+                    self.display_queue.put(frame)
         
         finally:
-            cap.release() 
-            cv2.destroyAllWindows()
+            self.display_queue.put(None)
+            cap.release()

@@ -1,4 +1,4 @@
-import go2_utils as utils
+import framework.utils.go2_utils as utils
 import asyncio
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 
@@ -16,6 +16,13 @@ async def go2_euler(conn, x, y, z):
         # X = Role, Y = Pitch, Z = Yaw
         {"api_id": SPORT_CMD["Euler"], "parameter": {"x": x, "y": y, "z": z}}
     )
+
+async def getState(conn):
+    response = await conn.datachannel.pub_sub.publish_request_new(
+            RTC_TOPIC["MOTION_SWITCHER"], 
+            {"api_id": 1001}
+        )
+    print(response)
     
 
 async def perform_action(conn, action):
@@ -23,7 +30,6 @@ async def perform_action(conn, action):
         RTC_TOPIC["SPORT_MOD"],
         {"api_id": SPORT_CMD[action], "parameter": {"data": True}}
     )
-
     return response
 
 async def move_pitch(conn, move_x, move_y, move_z, pitch_x, pitch_y, pitch_z):
@@ -61,7 +67,7 @@ def calculate_movement(distance_to_object, deadzone, target_distance, scale_fact
     return x * scale_factor
 
 
-def calculate_rotation(offset_ratio, deadzone, scale_factor):
+def calculate_rotation(offset_ratio, deadzone, scale_factor, max_step=0.5):
     # Shifting center to 0 from 0.5
     offcenter_ratio = offset_ratio - 0.5
 
@@ -69,9 +75,15 @@ def calculate_rotation(offset_ratio, deadzone, scale_factor):
         offcenter_ratio = 0.0
 
     # 2 seems to work well
-    return -offcenter_ratio * scale_factor  
+    rotate = -offcenter_ratio * scale_factor  
+    if rotate > max_step:
+        rotate = max_step
+    elif rotate < -max_step:
+        rotate = -max_step
+    
+    return rotate
 
-def calculate_pitch(offset_ratio, deadzone, scale_factor, current_pitch):
+def calculate_pitch(offset_ratio, deadzone, scale_factor, current_pitch, max_pitch=0.05):
     MAX_ABS_PITCH = 0.4
     # Shifting center to 0 from 0.5
     offcenter_ratio = offset_ratio - 0.5
@@ -81,6 +93,12 @@ def calculate_pitch(offset_ratio, deadzone, scale_factor, current_pitch):
 
     # amount to pitch
     temp_pitch_position = offcenter_ratio * scale_factor
+    
+    if temp_pitch_position > max_pitch:
+        temp_pitch_position = max_pitch
+    elif temp_pitch_position < -max_pitch:
+        temp_pitch_position = -max_pitch
+
     # future pitch position
     pitch_position = current_pitch + temp_pitch_position
     # Check if pitch is within max pitch limit

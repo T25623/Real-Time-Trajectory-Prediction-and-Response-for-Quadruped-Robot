@@ -5,7 +5,7 @@ import re
 from enum import Enum
 import queue
 import numpy as np
-import go2_utils as utils
+import framework.utils.go2_utils as utils
 
 
 class LidarDecoder(Enum):
@@ -75,7 +75,6 @@ class WebRTCConnection:
     def lidar_callback(self, message):
         self.lidar_queue = message 
         self.lidar_origin = utils.lidar_origin_calculation(message)
-        print("got lidar data")
 
 
         

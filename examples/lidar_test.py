@@ -1,7 +1,6 @@
-from go2_setup import WebRTCConnection
-import go2_setup as go2
-import display_lidar as dl
-from detection import DetectionPipeline
+from detection.go2.go2_setup import WebRTCConnection
+import detection.go2.go2_setup as go2
+import detection.lidar.display_lidar as dl
 import asyncio
 import numpy as np
 import pyvista as pv

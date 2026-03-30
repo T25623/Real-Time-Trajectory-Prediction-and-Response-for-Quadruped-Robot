@@ -1,12 +1,12 @@
 import pandas as pd
 import pyvista as pv
 import numpy as np
-import go2_setup as go2
-from go2_setup import WebRTCConnection
+import framework.go2.go2_setup as go2
+from framework.go2.go2_setup import WebRTCConnection
 import asyncio
-from detection import DetectionPipeline
-from kalman_filter import KalmanFilter
-import time 
+from framework.detection.detection import DetectionPipeline
+from framework.detection.kalman_filter import KalmanFilter
+import time
 
 def lidar_point_cloud_processing(points, center, x_distance=1, y_distance=1, z_distance=0.3):
     x_min = center[0] - x_distance
@@ -16,7 +16,7 @@ def lidar_point_cloud_processing(points, center, x_distance=1, y_distance=1, z_d
     y_max = center[1] + y_distance
 
     z_min = center[2] - z_distance
-    z_max = center[2] + z_distance
+    z_max = center[2] 
 
     mask = (
         (points[:,0] > x_min) & (points[:,0] < x_max) &
@@ -34,10 +34,11 @@ def inrange_points(points, center, inrange_distance):
 
     return points[distances < inrange_distance]
 
+
 def vector_towards_emptyness(points, center):
 
     if len(points) == 0:
-        return np.array([0,1,0])
+        return None
 
     rel = points - center
     rel[:,2] = 0
@@ -59,7 +60,6 @@ def vector_towards_emptyness(points, center):
         np.sin(best_angle),
         0
     ])
-
     return direction
     
 
@@ -80,16 +80,13 @@ def update_plotter(plotter, filtered_points, nearby_points, arrow_direction, cen
     
     plotter.add_points(np.array([center]), color='yellow', point_size=15, render_points_as_spheres=True)
     plotter.update()
+
     
 def run(plotter, points, center, inrange_distance, facing):
     filtered_points = lidar_point_cloud_processing(points, center)
     nearby_points = inrange_points(filtered_points, center, inrange_distance)
     vector = vector_towards_emptyness(nearby_points, center)
+
     update_plotter(plotter, filtered_points, nearby_points, vector, center, facing=facing)
+    return vector
     
-
-
-
-
-
-

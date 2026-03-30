@@ -29,7 +29,6 @@ def lidar_origin_calculation(message):
     width = np.array(message["data"]["width"], dtype=float)
     resolution = np.array(message["data"]["resolution"], dtype=float)
     center = origin + (width * resolution) / 2
-
     return center
 
 def valid_serial_number(serial_number):
@@ -48,3 +47,21 @@ def valid_ip(ip):
         valid = True
     else:
         print("Invalid IP")
+
+def calculate_facing_correction(orientation):
+    target = np.array([0, 1, 0])
+    cross = np.cross(orientation, target)
+    dot = np.dot(orientation, target)
+    angle = np.arctan2(np.linalg.norm(cross), dot)  
+    sign = np.sign(cross[2])
+    return sign * angle     
+
+def rotate_vector(orientation, angle):
+    cos_a = np.cos(angle)
+    sin_a = np.sin(angle)
+    R = np.array([
+        [cos_a, -sin_a, 0],
+        [sin_a, cos_a, 0],
+        [0, 0, 1]
+    ])
+    return R @ orientation 
