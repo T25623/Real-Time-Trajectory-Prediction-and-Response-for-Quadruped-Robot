@@ -1,4 +1,8 @@
 import numpy as np
+from hailo_platform import Device
+import subprocess
+import os
+import psutil
 
 def parse_response(response):
     code = response['data']['header']['status']['code']
@@ -64,4 +68,30 @@ def rotate_vector(orientation, angle):
         [sin_a, cos_a, 0],
         [0, 0, 1]
     ])
-    return R @ orientation 
+    return R @ orientation
+
+target = Device()
+
+def npu_temp():
+    return round(target.control.get_chip_temperature().ts0_temperature, 2)
+
+def npu_load():
+    return 0
+
+def pi_battery_soc():
+    result = subprocess.run("vcgencmd pmic_read_adc | grep EXT5V_V", shell=True, capture_output=True, text=True)
+
+    voltage = result.stdout.strip().split("=")[-1].replace("V", "")
+    voltage = float(voltage)
+    return round(voltage, 2)
+
+def cpu_temp():
+    result = subprocess.run("vcgencmd measure_temp", shell=True, capture_output=True, text=True)
+
+    temp = result.stdout.strip().split("=")[-1].replace("'C", "")
+    temp = float(temp)
+    return round(temp, 2)
+
+def cpu_load():
+    return psutil.cpu_percent(interval=None)
+

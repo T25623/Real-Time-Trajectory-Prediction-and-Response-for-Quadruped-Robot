@@ -279,9 +279,7 @@ root.title("Go2 WebRTC GUI")
 videoLabel = tk.Label(root)
 videoLabel.grid(column=0, row=0, rowspan=4, padx=10, pady=10)
 
-go2_actions = ("StandDown", "StandUp", "Sit", "RiseSit", "Hello", "Handstand" , "Pose", "FrontJump", "Wallow", "Stretch", "MoonWalk", "Handstand", "FrontPounce", "BodyHeight")
-go2_actions_combo = Combobox(root, values=go2_actions, state="readonly")
-go2_actions_combo.grid(column=1, row=0, padx=5, pady=5)
+
 
 action_button = tk.Button(
     root,

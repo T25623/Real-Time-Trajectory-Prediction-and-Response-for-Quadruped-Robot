@@ -3,11 +3,11 @@ import framework.go2.go2_setup as go2
 import framework.lidar.display_lidar as dl
 from framework.detection.detection import DetectionPipeline
 import asyncio
-import detection.go2.go2_movement as move
+import framework.go2.go2_movement as move
 import threading
 import numpy as np
 import pyvista as pv
-from detection.utils.go2_utils import rotate_vector, calculate_facing_correction
+from framework.utils.go2_utils import rotate_vector, calculate_facing_correction
 
 hef_path = "config/balloonv8s.hef"
 config_path = "config/config.json"

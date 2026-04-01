@@ -27,12 +27,13 @@ import numpy as np
 from collections import deque
 
 class DetectionPipeline:
-    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter.xyz_predict(), FPS_counter = True, trail_length=30) -> None:
+    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter.xyz_predict(), FPS_counter = True, trail_length=30, headless=False) -> None:
         # Camera config
         self.source = source
         self.resolution = resolution
         self.framerate = framerate
         self.colour_format = colour_format
+        self.headless = headless
         
         # Model Config
         self.hef_path = hef_path
@@ -52,12 +53,13 @@ class DetectionPipeline:
         self.min_distance = 0
         self.predicted_distances = deque(maxlen=round(framerate/2))
         self.predicted_distance = 0
+        self.confidence_score = 0
         
         # Video Stream Queues
         self.FPS_counter = FPS_counter
         self.input_queue = queue.Queue(maxsize=2)
         self.output_queue = queue.Queue(maxsize=2)
-        self.display_queue = queue.Queue(maxsize=1)
+        self.display_queue = None
 
         self.trail = deque(maxlen=trail_length)
 
@@ -80,30 +82,33 @@ class DetectionPipeline:
         threading.Thread(target=self._display_loop, daemon=True).start()
 
     def _display_loop(self):
-        cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
-        while True:
-            frame = self.display_queue.get()
-            if frame is None:
-                break
-            cv2.imshow("Output", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-        cv2.destroyAllWindows()
+        if not self.headless:
+            cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
+            while True:
+                frame = self.display_queue
+                if frame is None:
+                    break
+                cv2.imshow("Output", frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            cv2.destroyAllWindows()
     
     def estimate_distance(self, x0, y0, x1, y1, real_height, focal_length, scale_factor):
         # Calculate area of detected object
         box_height = abs(y1 - y0)
 
-        distance = (((real_height * focal_length) / box_height) * 2) * scale_factor
+        distance = round((((real_height * focal_length) / box_height) * 2) * scale_factor, 2)
         return distance
 
     def process_detections(self, detections):
 
-        bbox = detections['detection_boxes']
-
+        bbox = detections["detection_boxes"]
+        detection_scores = detections["detection_scores"]
+        
         if len(bbox) > 0:
             # Extract coordinates of bounding box 
             y0, x0, y1, x1 = bbox[0]
+            self.confidence_score = round(float(detection_scores[0]), 2)
 
             # Calculate center of bounding box
             self.center_x = ((y0 + y1) / 2) / self.resolution[0]
@@ -134,6 +139,13 @@ class DetectionPipeline:
 
         else:
             self.detected = False
+            self.confidence_score = None
+            self.center_x = None
+            self.center_y = None
+            self.min_distance = None
+            self.predicted_center_x = None
+            self.predicted_center_y = None
+            self.predicted_distance = None
 
     def draw_trail(self, frame, trail_list):
         total = len(trail_list)
@@ -191,7 +203,7 @@ class DetectionPipeline:
                     self.future_center_y = future_positions[-1][1]
                     
                     self.predicted_distances.append(future_positions[-1][2])
-                    self.future_distance = min(self.predicted_distances)
+                    self.future_distance = round(min(self.predicted_distances),2)
                     for px, py, pz in future_positions:
                         px = int(px * self.resolution[0])
                         py = int(py * self.resolution[1])
@@ -200,9 +212,9 @@ class DetectionPipeline:
                         cv2.circle(frame, (px, py), radius, (255,0,255), -1)
                 
                 elif not self.detected:
-                    self.future_center_x = 0
-                    self.future_center_y = 0
-                    self.future_distance = 0
+                    self.future_center_x = None
+                    self.future_center_y = None
+                    self.future_distance = None
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
@@ -210,12 +222,12 @@ class DetectionPipeline:
 
                 if self.FPS_counter:
                     cv2.putText(frame, fps_text, (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
-                    cv2.putText(frame, f"Distance {round(self.min_distance,2)}", (7, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 3, cv2.LINE_AA)
-                    cv2.putText(frame, f"Predicted Distance {round(self.future_distance,2)}", (7, 140), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 3, cv2.LINE_AA)
+                    cv2.putText(frame, f"Distance {self.min_distance}", (7, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 3, cv2.LINE_AA)
+                    cv2.putText(frame, f"Predicted Distance {self.future_distance}", (7, 140), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 3, cv2.LINE_AA)
 
-                if not self.display_queue.full():
-                    self.display_queue.put(frame)
+                
+                self.display_queue = frame
         
         finally:
-            self.display_queue.put(None)
+            self.display_queue = None
             cap.release()
