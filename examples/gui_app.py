@@ -13,6 +13,8 @@ from tkinter.ttk import Combobox, Notebook, Style
 from PIL import Image, ImageTk
 import time
 import cv2
+from collections import deque
+
 
 # Colours & Fonts
 BG = "#0f1117"
@@ -152,14 +154,26 @@ objectives = ("Track & Hit", "Stand & Hit", "Move & Dodge", "Stand & Dodge")
 objectives_combobox = Combobox(reponse_and_motion_container, values=objectives, state="readonly", font=FONT_LABEL)
 objectives_combobox.pack(fill=X, padx=12, pady=(0,8))
 
-for lbl_text, slider_attr in (("Movement Speed", "move_speed_slider"), ("Rotate Speed",   "rotate_speed_slider"), ("Pitch Speed",    "pitch_speed_slider")):
-    row = Frame(reponse_and_motion_container, bg=BG2)
-    row.pack(fill=X, padx=12, pady=2)
-    dim_label(row, lbl_text, width=14).pack(side=LEFT, anchor=W)
-    s = make_scale(row, from_=0, to=100)
-    s.pack(side=LEFT, fill=X, expand=True)
-    s.set(50)
-    globals()[slider_attr] = s
+move_speed_row = Frame(reponse_and_motion_container, bg=BG2)
+move_speed_row.pack(fill=X, padx=12, pady=2)
+dim_label(move_speed_row, "Movement Speed", width=14).pack(side=LEFT, anchor=W)
+move_speed_slider = make_scale(move_speed_row, from_=0, to=100)
+move_speed_slider.pack(side=LEFT, fill=X, expand=True)
+move_speed_slider.set(50)
+
+rotate_speed_row = Frame(reponse_and_motion_container, bg=BG2)
+rotate_speed_row.pack(fill=X, padx=12, pady=2)
+dim_label(rotate_speed_row, "Rotate Speed", width=14).pack(side=LEFT, anchor=W)
+rotate_speed_slider = make_scale(rotate_speed_row, from_=0, to=100)
+rotate_speed_slider.pack(side=LEFT, fill=X, expand=True)
+rotate_speed_slider.set(50)
+
+pitch_speed_row = Frame(reponse_and_motion_container, bg=BG2)
+pitch_speed_row.pack(fill=X, padx=12, pady=2)
+dim_label(pitch_speed_row, "Pitch Speed", width=14).pack(side=LEFT, anchor=W)
+pitch_speed_slider = make_scale(pitch_speed_row, from_=0, to=100)
+pitch_speed_slider.pack(side=LEFT, fill=X, expand=True)
+pitch_speed_slider.set(50)
 
 Frame(reponse_and_motion_container, bg=BG2, height=8).pack()
 
@@ -326,29 +340,31 @@ def tab_row(parent, row, label_text, widget):
 section_label(setup_tab, "Camera").grid(row=0, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
 separator(setup_tab).grid(row=1, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
-camera_source_combobox = Combobox(setup_tab, values=("Rpi","USB","Robot"), state="readonly", font=FONT_LABEL)
+camera_source_combobox = Combobox(setup_tab, values=("rpi","usb","Robot"), state="readonly", font=FONT_LABEL)
 resolution_combobox = Combobox(setup_tab, values=("(1920x1080)","(1280x720)","(640x360)","(320x180)"), state="readonly", font=FONT_LABEL)
 frame_rate_input = make_entry(setup_tab, width=10)
+run_detection_button = make_button(setup_tab, "Run Detection", width=22)
 
 tab_row(setup_tab, 2, "Camera Source", camera_source_combobox)
 tab_row(setup_tab, 3, "Resolution", resolution_combobox)
 tab_row(setup_tab, 4, "Frame Rate", frame_rate_input)
+tab_row(setup_tab, 5, "", run_detection_button)
 
 # Detection model section
-section_label(setup_tab, "Detection Model").grid(row=5, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
-separator(setup_tab).grid(row=6, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
+section_label(setup_tab, "Detection Model").grid(row=6, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
+separator(setup_tab).grid(row=7, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
-model_path_button  = make_button(setup_tab, "Select Model", width=22)
+model_path_button = make_button(setup_tab, "Select Model", width=22)
 config_path_button = make_button(setup_tab, "Select Configuration", width=22)
 labels_path_button = make_button(setup_tab, "Select Labels", width=22)
 
-model_path_button.grid( row=7,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
-config_path_button.grid(row=8,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
-labels_path_button.grid(row=9,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
+model_path_button.grid(row=8,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
+config_path_button.grid(row=9,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
+labels_path_button.grid(row=10,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
 
 # Prediction section
-section_label(setup_tab, "Prediction").grid(row=10, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
-separator(setup_tab).grid(row=11, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
+section_label(setup_tab, "Prediction").grid(row=11, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
+separator(setup_tab).grid(row=12, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
 prediction_steps_slider = make_scale(setup_tab, from_=1, to=100)
 object_height_input = make_entry(setup_tab, width=10)
@@ -357,23 +373,23 @@ distance_calibration_slider = make_scale(setup_tab, from_=1, to=100)
 prediction_steps_slider.set(15)
 distance_calibration_slider.set(15)
 
-tab_row(setup_tab, 12, "Prediction Steps", prediction_steps_slider)
-tab_row(setup_tab, 13, "Object Height", object_height_input)
-tab_row(setup_tab, 14, "Calibrate Distance", distance_calibration_slider)
+tab_row(setup_tab, 13, "Prediction Steps", prediction_steps_slider)
+tab_row(setup_tab, 14, "Object Height", object_height_input)
+tab_row(setup_tab, 15, "Calibrate Distance", distance_calibration_slider)
 
 # Video section
-section_label(setup_tab, "Video").grid(row=15, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
-separator(setup_tab).grid(row=16, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
+section_label(setup_tab, "Video").grid(row=16, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
+separator(setup_tab).grid(row=17, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
 trail_length_slider = make_scale(setup_tab, from_=1, to=100)
 trail_length_slider.set(15)
 
 show_fps_var = IntVar()
 show_fps_counter_switch = make_check(setup_tab, "Show FPS Counter", show_fps_var)
-show_fps_counter_switch.grid(row=17, column=0, columnspan=2, padx=12, pady=3, sticky=W)
-tab_row(setup_tab, 18, "Trail Length", trail_length_slider)
+show_fps_counter_switch.grid(row=18, column=0, columnspan=2, padx=12, pady=3, sticky=W)
+tab_row(setup_tab, 19, "Trail Length", trail_length_slider)
 
-Frame(setup_tab, bg=BG2, height=10).grid(row=19, column=0)
+Frame(setup_tab, bg=BG2, height=10).grid(row=20, column=0)
 
 # Lidar Tab
 section_label(lidar_tab, "Lidar").grid(row=0, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
@@ -406,57 +422,79 @@ def get_ip():
 def get_serial_number(): 
     return serial_number_input.get()
 
-def get_username(): return username_input.get()
+def get_username(): 
+    return username_input.get()
 
-def get_password(): return password_input.get()
+def get_password(): 
+    return password_input.get()
 
 def get_objective():
     return objectives_combobox.get()
 
 def get_move_speed():
-    return move_speed_slider.get()
+    if dog is not None:
+        dog.movement_speed = move_speed_slider.get()
 
 def get_rotate_speed():
-    return rotate_speed_slider.get()
+    if dog is not None:
+        dog.rotate_speed = rotate_speed_slider.get()
 
 def get_pitch_speed():
-    return pitch_speed_slider.get()
+    if dog is not None:
+        dog.pitch_speed = pitch_speed_slider.get()
 
 def get_camera_source():
-    return camera_source_combobox.get()
+    source = camera_source_combobox.get()
+    if detection is not None and source != "":
+        detection.source = source
+            
 
 def get_resolution():
-    return resolution_combobox.get()
+    res = resolution_combobox.get()
+    if res != "" and detection is not None:
+        result = res.replace("(", "").replace(")", "").split("x")
+        resolution = (int(result[0]), int(result[1]))
+        detection.resolution = resolution
+
 
 def get_frame_rate():
-    return frame_rate_input.get()
+    frame_rate = frame_rate_input.get()
+    if frame_rate != "" and detection is not None:
+        frame_rate = int(frame_rate)
+        detection.framerate = frame_rate
 
 def get_prediction_steps():
-    return prediction_steps_slider.get()
+    if detection is not None:
+        detection.predict_steps = int(prediction_steps_slider.get())
 
 def get_object_height():
-    return object_height_input.get()
+    height = object_height_input.get()
+    if detection is not None and height != "":
+        detection.real_object_height = float(height)
 
 def get_distance_calibration():
-    return distance_calibration_slider.get()
+    if detection is not None:
+        detection.distance_scale_factor = int(distance_calibration_slider.get())
 
 def get_trail_length():
-    return trail_length_slider.get()
+    if detection is not None:
+        detection.trail = deque(maxlen=int(trail_length_slider.get())) 
 
 def get_lidar_refresh_rate():
     return lidar_refresh_rate_slider.get()
 
 def get_show_fps():
-    return bool(show_fps_var.get())
+    if detection is not None:
+        detection.FPS_counter = bool(show_fps_var.get())
 
 # Button commands
 def on_connect():
-    method = get_connection_method()
-    print(f"Connecting via {method}")
-    if method == "LocalSTA":
-        print(f"IP: {get_ip()} Serial: {get_serial_number()}")
-    elif method == "Remote":
-        print(f"Serial: {get_serial_number()} User: {get_username()}")
+    global dog
+    if get_connection_method() != "":
+        if dog is None:
+            robot_connection_setup()
+        elif dog is not None:
+            dog = None
 
 def on_forward():       
     print(f"Forward | speed={get_move_speed()}")
@@ -497,6 +535,10 @@ def on_auto_mode():
 def on_power_off():
     print("Power Off")
 
+def on_run_detection():
+    if detection is not None:
+        start_detection()
+    
 def on_model_path():
     from tkinter import filedialog
     path = filedialog.askopenfilename(title="Select Detection Model")
@@ -526,6 +568,7 @@ pounce_button.config(command=on_pounce)
 manual_mode_button.config(command=on_manual_mode)
 auto_mode_button.config(command=on_auto_mode)
 power_off_mode_button.config(command=on_power_off)
+run_detection_button.config(command=on_run_detection)
 model_path_button.config(command=on_model_path)
 config_path_button.config(command=on_config_path)
 labels_path_button.config(command=on_labels_path)
@@ -536,38 +579,51 @@ config_path = "config/config.json"
 labels_path = "config/balloon.txt"
 
 # Detection Pipeline
-detection = DetectionPipeline(hef_path, config_path, labels_path, headless=True, resolution=(640, 360), framerate=120)
+detection = DetectionPipeline(hef_path, config_path, labels_path, headless=True, resolution=(1280, 720), framerate=60)
 ms_per_frame = int(1000 / detection.framerate)
 
-detection_thread = threading.Thread(target=detection.run, daemon=True)
-detection_thread.start()
+detection_thread = None
+
+def start_detection():
+    global detection_thread
+
+    if detection_thread is not None and detection_thread.is_alive():
+        detection.stop()
+        detection_thread.join(timeout=3)
+
+    detection_thread = threading.Thread(target=detection.run, daemon=True)
+    detection_thread.start()
+
+start_detection()
+
+
 
 # Robot Connection
 dog = None
-vector = None
 
-async def go2_connection():
-    global dog, vector
-    dog = WebRTCConnection()
-    await dog.connection_setup()
-    # dog.lidar_setup(True, 0)
+def robot_connection_setup():
 
-    pitch = 0
-    while True:
-        dog.state_call()
+    async def setup():
+        global dog
 
-        await asyncio.sleep(1)
+        dog = WebRTCConnection()
+        await dog.connection_setup(get_connection_method(), get_ip(), get_serial_number(), get_username(), get_password())
+        
+        while True:
+            dog.status_check()
+            await asyncio.sleep(1)
+        
+    def async_setup():
+        asyncio.run(setup())
 
-def asyncio_go2():       
-    asyncio.run(go2_connection())
+    robot_thread = threading.Thread(target=async_setup, daemon=True)
+    robot_thread.start()
 
-go2_thread = threading.Thread(target=asyncio_go2, daemon=True)
-go2_thread.start()
+
 
 def update_robot_status():
     global dog
-
-    robot_battery = dog.state_of_charge if dog else None
+    robot_battery = dog.state_of_charge if dog is not None else None
     pi_battery = utils.pi_battery_soc()
     robot_roll = None
     robot_pitch = None
@@ -580,16 +636,21 @@ def update_robot_status():
 
     def status_check(value, suffix=""):
         return f"{value}{suffix}" if value is not None else "N/A"
-
+    
     robot_battery_label.config(text=f"Robot Battery : {status_check(robot_battery, "%")}")
-    pi_battery_label.config(  text=f"Pi Battery    : {status_check(pi_battery, "%")}")
-    robot_roll_label.config(  text=f"Roll          : {status_check(robot_roll)}")
-    robot_pitch_label.config( text=f"Pitch         : {status_check(robot_pitch)}")
-    robot_yaw_label.config(   text=f"Yaw           : {status_check(robot_yaw)}")
-    cpu_temp_label.config(    text=f"CPU Temp      : {status_check(cpu_temp, "°C")}")
-    cpu_load_label.config(    text=f"CPU Load      : {status_check(cpu_load, "%")}")
-    npu_temp_label.config(    text=f"NPU Temp      : {status_check(npu_temp, "°C")}")
-    npu_load_label.config(    text=f"NPU Load      : {status_check(npu_load, "%")}")
+    pi_battery_label.config(   text=f"Pi Battery    : {status_check(pi_battery, "%")}")
+    robot_roll_label.config(   text=f"Roll          : {status_check(robot_roll)}")
+    robot_pitch_label.config(  text=f"Pitch         : {status_check(robot_pitch)}")
+    robot_yaw_label.config(    text=f"Yaw           : {status_check(robot_yaw)}")
+    cpu_temp_label.config(     text=f"CPU Temp      : {status_check(cpu_temp, "°C")}")
+    cpu_load_label.config(     text=f"CPU Load      : {status_check(cpu_load, "%")}")
+    npu_temp_label.config(     text=f"NPU Temp      : {status_check(npu_temp, "°C")}")
+    npu_load_label.config(     text=f"NPU Load      : {status_check(npu_load, "%")}")
+
+    if dog is not None:
+        connection_status_label.config(text="● CONNECTED", fg=SUCCESS)
+    else:
+        connection_status_label.config(text="● NO CONNECTION", fg=DANGER)
 
     window.after(500, update_robot_status)
 
@@ -608,6 +669,24 @@ def update_detection_status():
     detection_predicted_distance_label.config(text=f"Detected Object Predicted Distance : {status_check(predicted_distance)}")
 
     window.after(500, update_detection_status)
+
+def input_field_check():
+    get_objective()
+    get_move_speed()
+    get_rotate_speed()
+    get_pitch_speed()
+    get_camera_source()
+    get_resolution()
+    get_frame_rate()
+    get_prediction_steps()
+    get_object_height()
+    get_distance_calibration()
+    get_trail_length()
+    get_lidar_refresh_rate()
+    get_show_fps()
+
+    window.after(500, input_field_check)
+
 
 
 def update_video():
@@ -629,6 +708,7 @@ def update_video():
 
     window.after(ms_per_frame, update_video)
 
+input_field_check()
 update_video()
 update_robot_status()
 update_detection_status()

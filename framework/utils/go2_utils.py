@@ -95,3 +95,28 @@ def cpu_temp():
 def cpu_load():
     return psutil.cpu_percent(interval=None)
 
+
+def robot_velocity(message):
+    return message['data']["velocity"]
+    
+def robot_gyroscope(message):
+    return message['data']['imu_state']['gyroscope']
+
+def robot_temperature(message):
+    return message['data']['imu_state']['temperature']
+
+def sportmode_state_print(message):
+    print(message)
+    
+    # quaternion = imu_state['quaternion']
+    # accelerometer = imu_state['accelerometer']
+    # rpy = imu_state['rpy']
+    # temperature = imu_state['temperature']
+
+    # mode = message['mode']
+    # progress = message['progress']
+    # gait_type = message['gait_type']
+    # foot_raise_height = message['foot_raise_height']
+    # position = message['position']
+    # body_height = message['body_height']
+    # velocity = message['velocity']

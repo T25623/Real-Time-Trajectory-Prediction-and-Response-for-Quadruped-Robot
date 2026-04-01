@@ -27,11 +27,12 @@ import numpy as np
 from collections import deque
 
 class DetectionPipeline:
-    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter.xyz_predict(), FPS_counter = True, trail_length=30, headless=False) -> None:
+    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, camera_focal_length=0.275, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter.xyz_predict(), predict_steps=15, FPS_counter=False, trail_length=30, headless=False) -> None:
         # Camera config
         self.source = source
         self.resolution = resolution
         self.framerate = framerate
+        self.camera_focal_length = camera_focal_length
         self.colour_format = colour_format
         self.headless = headless
         
@@ -61,9 +62,17 @@ class DetectionPipeline:
         self.output_queue = queue.Queue(maxsize=2)
         self.display_queue = None
 
-        self.trail = deque(maxlen=trail_length)
+        self.trail_length = trail_length
+        self.trail = deque(maxlen=self.trail_length)
 
         self.kalman_filter = kalman_filter
+        self.predict_steps = predict_steps
+
+        self.real_object_height = 0
+        self.distance_scale_factor = 0
+
+        self.running = False
+        self._stop_event = threading.Event()
 
     def setup_camera(self):
         resolution = {"size": self.resolution, "format": self.colour_format}
@@ -93,11 +102,11 @@ class DetectionPipeline:
                     break
             cv2.destroyAllWindows()
     
-    def estimate_distance(self, x0, y0, x1, y1, real_height, focal_length, scale_factor):
+    def estimate_distance(self, x0, y0, x1, y1):
         # Calculate area of detected object
         box_height = abs(y1 - y0)
 
-        distance = round((((real_height * focal_length) / box_height) * 2) * scale_factor, 2)
+        distance = round((((self.real_object_height * self.camera_focal_length) / box_height) * 2) * self.distance_scale_factor, 2)
         return distance
 
     def process_detections(self, detections):
@@ -118,7 +127,7 @@ class DetectionPipeline:
             self.trail.append((px, py))
             
             # Calculate distance to detected object
-            self.min_distance = self.estimate_distance(x0, y0, x1, y1, 24, 0.275, 15)
+            self.min_distance = self.estimate_distance(x0, y0, x1, y1)
 
             # Create array for kalman filter of center x, center y, and distance 
             z = np.array([
@@ -161,21 +170,30 @@ class DetectionPipeline:
             cv2.circle(frame, trail_list[i], max(1, int(4 * alpha)), color, -1)
         return frame
 
-    
+    def stop(self):
+        self.running = False
+        self._stop_event.set()
+        try:
+            self.output_queue.put_nowait(None)
+        except queue.Full:
+            pass
 
-    def run(self, predict_steps=20):
+    def run(self):
+        self.running = True
+        self._stop_event.clear()
+
         cap, images = self.setup_camera()
         height, width, _ = self.load_model()
         self.start_threads(images, cap, width, height)
+        
+        prev_frame_time = time.time()
+        fps_time = prev_frame_time 
+        fps_total = 0
+        frame_count = 0
+        fps_text = "FPS: 0"
 
-        if self.FPS_counter:
-            prev_frame_time = time.time()
-            fps_time = prev_frame_time 
-            fps_total = 0
-            frame_count = 0
-            fps_text = "FPS: 0"
         try:
-            while True:
+            while self.running:
                 result = self.output_queue.get()
                 if result is None:
                     break
@@ -198,7 +216,7 @@ class DetectionPipeline:
 
                 if self.kalman_filter is not None and self.detected:
 
-                    future_positions = self.kalman_filter.predict_n_steps(predict_steps)
+                    future_positions = self.kalman_filter.predict_n_steps(self.predict_steps)
                     self.future_center_x = future_positions[-1][0]
                     self.future_center_y = future_positions[-1][1]
                     
@@ -208,7 +226,7 @@ class DetectionPipeline:
                         px = int(px * self.resolution[0])
                         py = int(py * self.resolution[1])
                         
-                        radius = int(max(1, (pz**-1)*3))
+                        radius = int(max(1, (pz**-1)*3)) if pz > 0.01 else 1
                         cv2.circle(frame, (px, py), radius, (255,0,255), -1)
                 
                 elif not self.detected:
@@ -221,13 +239,14 @@ class DetectionPipeline:
                 frame = self.draw_trail(frame, self.trail)
 
                 if self.FPS_counter:
-                    cv2.putText(frame, fps_text, (7, 70), cv2.FONT_HERSHEY_SIMPLEX, 3, (100, 255, 0), 3, cv2.LINE_AA)
-                    cv2.putText(frame, f"Distance {self.min_distance}", (7, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 3, cv2.LINE_AA)
-                    cv2.putText(frame, f"Predicted Distance {self.future_distance}", (7, 140), cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 255, 0), 3, cv2.LINE_AA)
-
-                
+                    scaled_size = round(self.resolution[0] / 1000)  # or `self.resolution[1]` if you want scale based on width
+                    cv2.putText(frame, fps_text, (5, (scaled_size*30)), cv2.FONT_HERSHEY_SIMPLEX, scaled_size, (100, 255, 0), scaled_size, cv2.LINE_AA)
+                                    
                 self.display_queue = frame
         
+        except Exception as e:
+            print(e)
+
         finally:
             self.display_queue = None
             cap.release()

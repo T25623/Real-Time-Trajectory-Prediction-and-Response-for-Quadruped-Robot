@@ -16,22 +16,31 @@ class LidarDecoder(Enum):
 class WebRTCConnection:
     def __init__(self):
         self.conn = None
+
         self.lidar_queue = None
+        self.lidar_origin = None
+
         self.state_of_charge = None
         self.orientation = None
         self.motor_temperature_list = None
-        self.lidar_origin = None
+        self.velocity = None
+        self.gyroscope = None
+        self.temperature = None
+        
+        self.movement_speed = None
+        self.rotate_speed = None
+        self.pitch_speed = None
     
-    async def connection_setup(self, connection_method=WebRTCConnectionMethod.LocalAP,  ip=None, serial_number=None, username=None, password=None):
+    async def connection_setup(self, connection_method="LocalAP",  ip=None, serial_number=None, username=None, password=None):
         match connection_method:
-            case WebRTCConnectionMethod.LocalAP:
+            case "LocalAP":
                 self.conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.LocalAP)
-            case WebRTCConnectionMethod.LocalSTA:
+            case "LocalSTA":
                 if utils.valid_serial_number(serial_number):
                     self.conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.LocalSTA, serialNumber=serial_number)
                 elif utils.valid_ip(ip):
                     self.conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.LocalSTA, ip=ip)
-            case WebRTCConnectionMethod.Remote:
+            case "Remote":
                 self.conn = UnitreeWebRTCConnection(WebRTCConnectionMethod.Remote, serialNumber=serial_number, username=username, password=password)
 
         await self.conn.connect()
@@ -66,16 +75,34 @@ class WebRTCConnection:
         self.conn.datachannel.pub_sub.subscribe(
            "rt/lf/lowstate", self.state_callback
         )
+    
+    def sportmode_state_call(self):
+        self.conn.datachannel.pub_sub.subscribe(
+            "rt/lf/sportmodestate",
+            self.sportmode_state_callback
+        )
 
     def state_callback(self, message):
         self.orientation = utils.orientation_calculation(message)
         self.state_of_charge = utils.battery_state_of_charge_data(message)
         self.motor_temperature_list = utils.motor_temperature_data(message)
 
+    def sportmode_state_callback(self, message):
+        self.temperature = utils.robot_temperature(message)
+        self.velocity = utils.robot_velocity(message)
+        self.gyroscope = utils.robot_gyroscope(message)
+
     def lidar_callback(self, message):
         self.lidar_queue = message 
         self.lidar_origin = utils.lidar_origin_calculation(message)
 
 
-        
-        
+    def status_check(self):
+        self.sportmode_state_call()
+        self.state_call()
+
+                
+
+
+    
+
