@@ -202,7 +202,7 @@ class DetectionPipeline:
 
                 if self.FPS_counter:
                     new_frame_time = time.time()
-                    fps_total += 1 / (new_frame_time - prev_frame_time + 1000)
+                    fps_total += 1 / (new_frame_time - prev_frame_time + 1e-6)
                     frame_count += 1
                     prev_frame_time = new_frame_time
 
@@ -247,7 +247,7 @@ class DetectionPipeline:
 
                 if self.FPS_counter:
                     new_frame_time = time.time()
-                    fps_total += 1 / (new_frame_time - prev_frame_time + 1000)
+                    fps_total += 1 / (new_frame_time - prev_frame_time + 1e-6)
                     frame_count += 1
                     prev_frame_time = new_frame_time
 
@@ -286,7 +286,7 @@ class DetectionPipeline:
                 frame = self.draw_trail(frame, self.trail)
 
                 if self.FPS_counter:
-                    scaled_size = round(self.resolution[0] / 1000)  # or `self.resolution[1]` if you want scale based on width
+                    scaled_size = round(self.resolution[0] / 1000)
                     cv2.putText(frame, fps_text, (5, (scaled_size*30)), cv2.FONT_HERSHEY_SIMPLEX, scaled_size, (100, 255, 0), scaled_size, cv2.LINE_AA)
                                     
                 self.display_queue = frame

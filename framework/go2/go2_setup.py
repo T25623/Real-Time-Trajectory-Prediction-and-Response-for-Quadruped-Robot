@@ -13,12 +13,16 @@ class LidarDecoder(Enum):
     Native = 0
     Libvoxel = 1
 
+class Objective(Enum):
+    Track_Hit = 0
+    Stand_Hit = 1
+    Move_Dodge = 2
+    Stand_Dodge = 3
+    Seek = 5
 
 class WebRTCConnection:
     def __init__(self):
         self.conn = None
-
-        self.stop = False
 
         self.lidar_queue = None
         self.lidar_origin = None
@@ -35,6 +39,8 @@ class WebRTCConnection:
         self.pitch_speed = None
 
         self.avoid_vector = None
+
+        self.objective = None
     
     async def connection_setup(self, connection_method="LocalAP",  ip=None, serial_number=None, username=None, password=None):
         match connection_method:

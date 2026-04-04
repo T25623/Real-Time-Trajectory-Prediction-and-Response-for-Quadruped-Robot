@@ -100,8 +100,14 @@ def cpu_load():
 
 
 def robot_velocity(message):
-    return message['data']["velocity"]
+    vector = message['data']["velocity"]
+    velocity = np.array(vector)
+    speed = round(np.linalg.norm(velocity),2)
     
+    return speed if speed >= 0.04 else 0
+
+
+
 def robot_gyroscope(message):
     return message['data']['imu_state']['gyroscope']
 
@@ -110,16 +116,5 @@ def robot_temperature(message):
 
 def sportmode_state_print(message):
     print(message)
-    
-    # quaternion = imu_state['quaternion']
-    # accelerometer = imu_state['accelerometer']
-    # rpy = imu_state['rpy']
-    # temperature = imu_state['temperature']
 
-    # mode = message['mode']
-    # progress = message['progress']
-    # gait_type = message['gait_type']
-    # foot_raise_height = message['foot_raise_height']
-    # position = message['position']
-    # body_height = message['body_height']
-    # velocity = message['velocity']
+    

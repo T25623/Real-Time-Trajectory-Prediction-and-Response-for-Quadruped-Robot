@@ -161,36 +161,24 @@ async def avoid_response(robot, detection, track=True):
 
 
 
-async def movement_response(robot, detection, track=True):
+async def movement_response(robot, detection, track, response_action):
     pitch = 0
-    response_action = "Hello"
     
-    try:
-        while not robot.stop:
-            print(f"tick | stop={robot.stop} | detected={detection.detected} | dist={detection.future_distance}")
-            if robot.avoid_vector is not None:
-                await avoid_obstacle(robot)
+    if robot.avoid_vector is not None:
+        await avoid_obstacle(robot)
             
-            elif detection.detected:
-                if detection.future_distance >= -0.1 and detection.future_distance <= 0.3:
-                    if track:
-                        await asyncio.sleep(1.5)
+    elif detection.detected:
+        if detection.future_distance >= -0.1 and detection.future_distance <= 0.3:
+            if track:
+                await asyncio.sleep(1.5)
                     
-                    await perform_action(robot.conn, response_action)
-                    pitch = 0
+            await perform_action(robot.conn, response_action)
+            pitch = 0
                 
-                elif track:
-                    forward = calculate_movement(detection.future_distance, 0.1, 0.2, robot.movement_speed)
-                    rotate = calculate_rotation(detection.future_center_x, 0.1, robot.rotate_speed)
+        elif track:
+            forward = calculate_movement(detection.future_distance, 0.1, 0.2, robot.movement_speed)
+            rotate = calculate_rotation(detection.future_center_x, 0.1, robot.rotate_speed)
                    
-                    pitch = calculate_pitch(detection.future_center_y, 0.1, robot.pitch_speed, pitch)
-                    await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
-            
-            await asyncio.sleep(0.05)
-    
-    except asyncio.CancelledError:
-        print("movement_response cancelled")
-    
-    except Exception as e:
-        print(f"movement_response crashed: {e}")
-        raise
+            pitch = calculate_pitch(detection.future_center_y, 0.1, robot.pitch_speed, pitch)
+            await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
+

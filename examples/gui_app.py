@@ -1,5 +1,6 @@
 from framework.go2.go2_setup import WebRTCConnection
 import framework.go2.go2_setup as go2
+from framework.go2.go2_setup import Objective
 import framework.lidar.display_lidar as dl
 from framework.detection.detection import DetectionPipeline
 import asyncio
@@ -171,14 +172,14 @@ objectives_combobox.pack(fill=X, padx=12, pady=(0,8))
 move_speed_row = Frame(reponse_and_motion_container, bg=BG2)
 move_speed_row.pack(fill=X, padx=12, pady=2)
 dim_label(move_speed_row, "Movement Speed", width=14).pack(side=LEFT, anchor=W)
-move_speed_slider = make_scale(move_speed_row, from_=0.0, to=5.0, resolution=0.1)
+move_speed_slider = make_scale(move_speed_row, from_=0.0, to=50.0, resolution=0.1)
 move_speed_slider.pack(side=LEFT, fill=X, expand=True)
 move_speed_slider.set(0.25)
 
 rotate_speed_row = Frame(reponse_and_motion_container, bg=BG2)
 rotate_speed_row.pack(fill=X, padx=12, pady=2)
 dim_label(rotate_speed_row, "Rotate Speed", width=14).pack(side=LEFT, anchor=W)
-rotate_speed_slider = make_scale(rotate_speed_row, from_=0.0, to=5.0, resolution=0.1)
+rotate_speed_slider = make_scale(rotate_speed_row, from_=0.0, to=50.0, resolution=0.1)
 rotate_speed_slider.pack(side=LEFT, fill=X, expand=True)
 rotate_speed_slider.set(2)
 
@@ -358,8 +359,11 @@ section_label(setup_tab, "Camera").grid(row=0, column=0, columnspan=2, padx=8, p
 separator(setup_tab).grid(row=1, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
 camera_source_combobox = Combobox(setup_tab, values=("rpi","usb","Robot"), state="readonly", font=FONT_LABEL)
+camera_source_combobox.set("rpi")
 resolution_combobox = Combobox(setup_tab, values=("(1920x1080)","(1280x720)","(640x360)","(320x180)"), state="readonly", font=FONT_LABEL)
+resolution_combobox.set("(640x360)")
 frame_rate_input = make_entry(setup_tab, width=10)
+frame_rate_input.insert(0, "120")
 run_detection_button = make_button(setup_tab, "Run Detection", width=22)
 
 tab_row(setup_tab, 2, "Camera Source", camera_source_combobox)
@@ -375,13 +379,16 @@ model_paths_map = file_map("hef", "config")
 config_paths_map = file_map("json", "config")
 label_paths_map = file_map("txt", "config")
 
-models = (tuple(model_paths_map.keys()), "None")
-configs = (tuple(config_paths_map.keys()), "None")
-labels = (tuple(label_paths_map.keys()), "None")
+models = tuple(model_paths_map.keys()) + ("None",)
+configs = tuple(config_paths_map.keys()) + ("None",)
+labels = tuple(label_paths_map.keys()) + ("None",)
 
 model_path_combobox = Combobox(setup_tab, values=models, state="readonly", font=FONT_LABEL)
+model_path_combobox.set(models[0])
 config_path_combobox = Combobox(setup_tab, values=configs, state="readonly", font=FONT_LABEL)
+config_path_combobox.set(configs[0])
 labels_path_combobox = Combobox(setup_tab, values=labels, state="readonly", font=FONT_LABEL)
+labels_path_combobox.set(labels[0])
 
 model_path_combobox.grid(row=8,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
 config_path_combobox.grid(row=9,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
@@ -459,12 +466,18 @@ def get_objective():
         objective = objectives_combobox.get()
         
         track = True if "Move" in objective.split("&")[0] else False
+        hit = True if "Hit" in objective.split("&")[1] else False
 
-        if "Hit" in objective.split("&")[1]:
-            run_objective_async(move.movement_response(robot, detection, track))
+        if hit and track:
+            robot.objective = Objective.Track_Hit
+        elif hit and not track:
+            robot.objective = Objective.Stand_Hit
+        elif not hit and track:
+            robot.objective = Objective.Move_Dodge
+        elif not hit and not track:
+            robot.objective = Objective.Stand_Dodge
 
-        elif "Dodge" in objective.split("&")[1]:
-            run_objective_async(move.avoid_response(robot, detection, track))
+        
         
 
 def get_move_speed():
@@ -623,13 +636,12 @@ def on_power_off():
 def on_manual_mode():
     global robot_manual_control
     robot_manual_control = True
-    cancel_objective() 
-    if robot is not None:
-        robot.stop = True
+
 
 def on_auto_mode():
     global robot_manual_control
     robot_manual_control = False
+
 
 def on_power_off():
     global robot
@@ -640,34 +652,9 @@ def on_run_detection():
     if detection is not None:
         start_detection()
     
-objective_loop = asyncio.new_event_loop()
-
-def objective_run_loop():
-    asyncio.set_event_loop(objective_loop)
-    objective_loop.run_forever()
-
-threading.Thread(target=objective_run_loop, daemon=True).start()
-
-_objective_task = None
-
-def run_objective_async(coro):
-    global _objective_task
-    # Cancel previous task if still running
-    if _objective_task is not None and not _objective_task.done():
-        _objective_task.cancel()
-    # Submit new task and store reference
-    _objective_task = asyncio.run_coroutine_threadsafe(coro, objective_loop)
-
-def cancel_objective():
-    global _objective_task
-    if _objective_task is not None and not _objective_task.done():
-        _objective_task.cancel()
-        _objective_task = None
 
 def on_auto_run():
     if robot is not None:
-        cancel_objective()
-        robot.stop = False
         get_objective()  
 
 
@@ -739,6 +726,7 @@ def robot_connection_setup():
 
     async def setup():
         global robot
+        response_action = "Hello"
 
         robot = WebRTCConnection()
         await robot.connection_setup(get_connection_method(), get_ip(), get_serial_number(), get_username(), get_password())
@@ -746,8 +734,15 @@ def robot_connection_setup():
         while True:
             robot.status_check()
             await robot.low_battery_action()
+            
+            if detection is not None:
+                if robot.objective == Objective.Track_Hit:
+                    await move.movement_response(robot, detection, True, response_action)
+                
+                elif robot.objective == Objective.Stand_Hit:
+                    await move.movement_response(robot, detection, False, response_action)
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
         
     def async_setup():
         asyncio.run(setup())
@@ -774,9 +769,9 @@ def update_robot_status():
         return f"{value}{suffix}" if value is not None else "N/A"
     
     robot_battery_label.config(text=f"Robot Battery        : {status_check(robot_battery, "%")}")
-    robot_speed_label.config(text=f"Robot Speed          : {status_check(robot_velocity)}")
-    robot_temp_label.config(text=f"Robot Temp           : {status_check(robot_temp)}")
-    robot_motor_temperature_label.config(text=f"Robot Max Motor Temp : {status_check(robot_motor_temperature)}")
+    robot_speed_label.config(text=f"Robot Speed          : {status_check(robot_velocity, "m/s")}")
+    robot_temp_label.config(text=f"Robot Temp           : {status_check(robot_temp, "°C")}")
+    robot_motor_temperature_label.config(text=f"Robot Max Motor Temp : {status_check(robot_motor_temperature, "°C")}")
     
     pi_battery_label.config(text=f"Pi Battery           : {status_check(pi_battery)}")
     cpu_temp_label.config(text=f"CPU Temp             : {status_check(cpu_temp, "°C")}")
@@ -840,7 +835,7 @@ def update_video():
         video.imgtk = tk_image
         video.configure(image=tk_image)
 
-    window.after(ms_per_frame, update_video)
+    window.after(int(1000/30), update_video)
 
 input_field_check()
 update_video()
