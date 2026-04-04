@@ -14,7 +14,7 @@ from PIL import Image, ImageTk
 import time
 import cv2
 from collections import deque
-
+from pathlib import Path
 
 # Colours & Fonts
 BG = "#0f1117"
@@ -98,6 +98,16 @@ def make_check(parent, text, var):
 def separator(parent, color=BORDER):
     return Frame(parent, bg=color, height=1)
 
+def file_map(extension, path):
+    folder = Path(path)
+    mapping = {}
+
+    for file in folder.iterdir():
+        if file.suffix == f".{extension}":
+            mapping[file.stem] = str(file)
+
+    return mapping
+
 # Title Bar
 title_bar = Frame(window, bg=BG3, highlightbackground=BORDER, highlightthickness=1)
 title_bar.grid(column=0, row=0, columnspan=3, sticky=EW, padx=0, pady=0)
@@ -129,16 +139,20 @@ section_label(robot_status_container, "Robot Status").pack(fill=X, padx=8, pady=
 separator(robot_status_container).pack(fill=X, padx=8, pady=(0,6))
 
 robot_battery_label = info_label(robot_status_container, "Robot Battery : N/A")
-pi_battery_label    = info_label(robot_status_container, "Pi Battery    : N/A")
-robot_roll_label    = info_label(robot_status_container, "Roll          : N/A")
-robot_pitch_label   = info_label(robot_status_container, "Pitch         : N/A")
-robot_yaw_label     = info_label(robot_status_container, "Yaw           : N/A")
-cpu_temp_label      = info_label(robot_status_container, "CPU Temp      : N/A")
-cpu_load_label      = info_label(robot_status_container, "CPU Load      : N/A")
-npu_temp_label      = info_label(robot_status_container, "NPU Temp      : N/A")
-npu_load_label      = info_label(robot_status_container, "NPU Load      : N/A")
+robot_speed_label = info_label(robot_status_container, "Roll          : N/A")
+robot_temp_label = info_label(robot_status_container, "Pitch         : N/A")
+robot_motor_temperature_label = info_label(robot_status_container, "Yaw           : N/A")
 
-for lbl in (robot_battery_label, pi_battery_label, robot_roll_label, robot_pitch_label, robot_yaw_label, cpu_temp_label, cpu_load_label, npu_temp_label, npu_load_label):
+pi_label = section_label(robot_status_container, "Pi Status")
+pi_separator = separator(robot_status_container)
+
+pi_battery_label = info_label(robot_status_container, "Pi Battery    : N/A")
+cpu_temp_label = info_label(robot_status_container, "CPU Temp      : N/A")
+cpu_load_label = info_label(robot_status_container, "CPU Load      : N/A")
+npu_temp_label = info_label(robot_status_container, "NPU Temp      : N/A")
+npu_load_label = info_label(robot_status_container, "NPU Load      : N/A")
+
+for lbl in (robot_battery_label, robot_speed_label, robot_temp_label, robot_motor_temperature_label, pi_label, pi_separator, pi_battery_label, cpu_temp_label, cpu_load_label, npu_temp_label, npu_load_label):
     lbl.pack(fill=X, padx=12, pady=1)
 
 Frame(robot_status_container, bg=BG2, height=8).pack()
@@ -150,30 +164,33 @@ reponse_and_motion_container.grid(column=0, row=1, padx=0, pady=(0,6), sticky=EW
 section_label(reponse_and_motion_container, "Response & Motion").pack(fill=X, padx=8, pady=(8,6))
 separator(reponse_and_motion_container).pack(fill=X, padx=8, pady=(0,6))
 
-objectives = ("Track & Hit", "Stand & Hit", "Move & Dodge", "Stand & Dodge")
+objectives = ("Move & Hit", "Stand & Hit", "Move & Dodge", "Stand & Dodge")
 objectives_combobox = Combobox(reponse_and_motion_container, values=objectives, state="readonly", font=FONT_LABEL)
 objectives_combobox.pack(fill=X, padx=12, pady=(0,8))
 
 move_speed_row = Frame(reponse_and_motion_container, bg=BG2)
 move_speed_row.pack(fill=X, padx=12, pady=2)
 dim_label(move_speed_row, "Movement Speed", width=14).pack(side=LEFT, anchor=W)
-move_speed_slider = make_scale(move_speed_row, from_=0, to=100)
+move_speed_slider = make_scale(move_speed_row, from_=0.0, to=5.0, resolution=0.1)
 move_speed_slider.pack(side=LEFT, fill=X, expand=True)
-move_speed_slider.set(50)
+move_speed_slider.set(0.25)
 
 rotate_speed_row = Frame(reponse_and_motion_container, bg=BG2)
 rotate_speed_row.pack(fill=X, padx=12, pady=2)
 dim_label(rotate_speed_row, "Rotate Speed", width=14).pack(side=LEFT, anchor=W)
-rotate_speed_slider = make_scale(rotate_speed_row, from_=0, to=100)
+rotate_speed_slider = make_scale(rotate_speed_row, from_=0.0, to=5.0, resolution=0.1)
 rotate_speed_slider.pack(side=LEFT, fill=X, expand=True)
-rotate_speed_slider.set(50)
+rotate_speed_slider.set(2)
 
 pitch_speed_row = Frame(reponse_and_motion_container, bg=BG2)
 pitch_speed_row.pack(fill=X, padx=12, pady=2)
 dim_label(pitch_speed_row, "Pitch Speed", width=14).pack(side=LEFT, anchor=W)
-pitch_speed_slider = make_scale(pitch_speed_row, from_=0, to=100)
+pitch_speed_slider = make_scale(pitch_speed_row, from_=0.0, to=5.0, resolution=0.1)
 pitch_speed_slider.pack(side=LEFT, fill=X, expand=True)
-pitch_speed_slider.set(50)
+pitch_speed_slider.set(0.5)
+
+auto_run_button = make_button(reponse_and_motion_container, "Auto Run", color=SUCCESS, hover=SUCCESS_DIM, fg=BG, width=9)
+auto_run_button.pack(side=LEFT, fill=X, expand=True)
 
 Frame(reponse_and_motion_container, bg=BG2, height=8).pack()
 
@@ -262,23 +279,23 @@ ctrl_grid = Frame(robot_controls_container, bg=BG2)
 ctrl_grid.pack(padx=12, pady=(0,8))
 
 # D-pad + rotate group
-rotate_left_button  = make_button(ctrl_grid, "↺ Left",    width=9)
-forward_button      = make_button(ctrl_grid, "▲ Fwd",     width=9)
-rotate_right_button = make_button(ctrl_grid, "↻ Right",   width=9)
-left_button         = make_button(ctrl_grid, "◀ Left",    width=9)
-_center_spacer      = Frame(ctrl_grid, bg=BG2, width=78, height=32)
-right_button        = make_button(ctrl_grid, "Right ▶",   width=9)
-_empty              = Frame(ctrl_grid, bg=BG2, width=78, height=32)
-backward_button     = make_button(ctrl_grid, "▼ Back",    width=9)
+rotate_left_button = make_button(ctrl_grid, "↺ Left", width=9)
+forward_button = make_button(ctrl_grid, "▲ Fwd", width=9)
+rotate_right_button = make_button(ctrl_grid, "↻ Right", width=9)
+left_button = make_button(ctrl_grid, "◀ Left", width=9)
+_center_spacer = Frame(ctrl_grid, bg=BG2, width=78, height=32)
+right_button = make_button(ctrl_grid, "Right ▶", width=9)
+_empty = Frame(ctrl_grid, bg=BG2, width=78, height=32)
+backward_button = make_button(ctrl_grid, "▼ Back", width=9)
 
 rotate_left_button.grid( row=0, column=0, padx=3, pady=3)
-forward_button.grid(     row=0, column=1, padx=3, pady=3)
+forward_button.grid(row=0, column=1, padx=3, pady=3)
 rotate_right_button.grid(row=0, column=2, padx=3, pady=3)
-left_button.grid(        row=1, column=0, padx=3, pady=3)
-_center_spacer.grid(     row=1, column=1, padx=3, pady=3)
-right_button.grid(       row=1, column=2, padx=3, pady=3)
-_empty.grid(             row=2, column=0, padx=3, pady=3)
-backward_button.grid(    row=2, column=1, padx=3, pady=3)
+left_button.grid(row=1, column=0, padx=3, pady=3)
+_center_spacer.grid(row=1, column=1, padx=3, pady=3)
+right_button.grid(row=1, column=2, padx=3, pady=3)
+_empty.grid(row=2, column=0, padx=3, pady=3)
+backward_button.grid(row=2, column=1, padx=3, pady=3)
 
 # Separator between d-pad and actions
 Frame(ctrl_grid, bg=BORDER, width=1).grid(row=0, column=3, rowspan=3, padx=(10,10), sticky=NS)
@@ -354,13 +371,21 @@ tab_row(setup_tab, 5, "", run_detection_button)
 section_label(setup_tab, "Detection Model").grid(row=6, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
 separator(setup_tab).grid(row=7, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
-model_path_button = make_button(setup_tab, "Select Model", width=22)
-config_path_button = make_button(setup_tab, "Select Configuration", width=22)
-labels_path_button = make_button(setup_tab, "Select Labels", width=22)
+model_paths_map = file_map("hef", "config")
+config_paths_map = file_map("json", "config")
+label_paths_map = file_map("txt", "config")
 
-model_path_button.grid(row=8,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
-config_path_button.grid(row=9,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
-labels_path_button.grid(row=10,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
+models = (tuple(model_paths_map.keys()), "None")
+configs = (tuple(config_paths_map.keys()), "None")
+labels = (tuple(label_paths_map.keys()), "None")
+
+model_path_combobox = Combobox(setup_tab, values=models, state="readonly", font=FONT_LABEL)
+config_path_combobox = Combobox(setup_tab, values=configs, state="readonly", font=FONT_LABEL)
+labels_path_combobox = Combobox(setup_tab, values=labels, state="readonly", font=FONT_LABEL)
+
+model_path_combobox.grid(row=8,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
+config_path_combobox.grid(row=9,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
+labels_path_combobox.grid(row=10,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
 
 # Prediction section
 section_label(setup_tab, "Prediction").grid(row=11, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
@@ -368,6 +393,7 @@ separator(setup_tab).grid(row=12, column=0, columnspan=2, padx=8, pady=(0,4), st
 
 prediction_steps_slider = make_scale(setup_tab, from_=1, to=100)
 object_height_input = make_entry(setup_tab, width=10)
+object_height_input.insert(0, "20")
 distance_calibration_slider = make_scale(setup_tab, from_=1, to=100)
 
 prediction_steps_slider.set(15)
@@ -429,19 +455,29 @@ def get_password():
     return password_input.get()
 
 def get_objective():
-    return objectives_combobox.get()
+    if robot is not None and detection is not None:
+        objective = objectives_combobox.get()
+        
+        track = True if "Move" in objective.split("&")[0] else False
+
+        if "Hit" in objective.split("&")[1]:
+            run_objective_async(move.movement_response(robot, detection, track))
+
+        elif "Dodge" in objective.split("&")[1]:
+            run_objective_async(move.avoid_response(robot, detection, track))
+        
 
 def get_move_speed():
-    if dog is not None:
-        dog.movement_speed = move_speed_slider.get()
+    if robot is not None:
+        robot.movement_speed = move_speed_slider.get()
 
 def get_rotate_speed():
-    if dog is not None:
-        dog.rotate_speed = rotate_speed_slider.get()
+    if robot is not None:
+        robot.rotate_speed = rotate_speed_slider.get()
 
 def get_pitch_speed():
-    if dog is not None:
-        dog.pitch_speed = pitch_speed_slider.get()
+    if robot is not None:
+        robot.pitch_speed = pitch_speed_slider.get()
 
 def get_camera_source():
     source = camera_source_combobox.get()
@@ -455,7 +491,6 @@ def get_resolution():
         result = res.replace("(", "").replace(")", "").split("x")
         resolution = (int(result[0]), int(result[1]))
         detection.resolution = resolution
-
 
 def get_frame_rate():
     frame_rate = frame_rate_input.get()
@@ -487,72 +522,154 @@ def get_show_fps():
     if detection is not None:
         detection.FPS_counter = bool(show_fps_var.get())
 
+def get_model():
+    model = model_path_combobox.get()
+    
+    if model != "" and model != "None":
+        return model_paths_map[model]
+    else:
+        return None
+
+def get_config():
+    config = config_path_combobox.get()
+    
+    if config != "" and config != "None":
+        return config_paths_map[config]
+    else:
+        return None
+
+def get_labels():
+    labels = labels_path_combobox.get()
+    
+    if labels != "" and labels != "None":
+        return label_paths_map[labels]
+    else:
+        return None
+
 # Button commands
 def on_connect():
-    global dog
+    global robot
     if get_connection_method() != "":
-        if dog is None:
+        if robot is None:
             robot_connection_setup()
-        elif dog is not None:
-            dog = None
+        elif robot is not None:
+            robot = None
 
-def on_forward():       
-    print(f"Forward | speed={get_move_speed()}")
+def on_forward():
+    global robot, robot_manual_control
+    print("press")
+    if robot is not None and robot_manual_control:
+        print("move")
+        move_speed = 5 * (move_speed_slider.get() / 100)
+        print("move_speed")
+        run_async(move.go2_movement(robot.conn, move_speed, 0, 0))
+        print("moved")
 
 def on_backward():
-    print(f"Backward | speed={get_move_speed()}")
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        move_speed = 5 * (move_speed_slider.get() / 100)
+        run_async(move.go2_movement(robot.conn, -move_speed, 0, 0))
 
 def on_left():
-    print(f"Left | speed={get_move_speed()}")
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        move_speed = 5 * (move_speed_slider.get() / 100)
+        run_async(move.go2_movement(robot.conn, 0, move_speed, 0))
 
 def on_right():
-    print(f"Right | speed={get_move_speed()}")
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        move_speed = 5 * (move_speed_slider.get() / 100)
+        run_async(move.go2_movement(robot.conn, 0, -move_speed, 0))
 
 def on_rotate_left():
-    print(f"Rotate L | speed={get_rotate_speed()}")
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        rotate_speed = 2 * (rotate_speed_slider.get() / 100)
+        run_async(move.go2_movement(robot.conn, 0, 0, rotate_speed))
 
-def on_rotate_right(): 
-    print(f"Rotate R | speed={get_rotate_speed()}")
+def on_rotate_right():
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        rotate_speed = 2 * (rotate_speed_slider.get() / 100)
+        run_async(move.go2_movement(robot.conn, 0, 0, -rotate_speed))
 
 def on_sit():
-    print("Sit")
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        run_async(move.perform_action(robot.conn, "StandDown"))
 
 def on_stand():
-    print("Stand")
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        run_async(move.perform_action(robot.conn, "StandUp"))
 
 def on_hello():
-    print("Hello")
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        run_async(move.perform_action(robot.conn, "Hello"))
 
 def on_pounce():
-    print("Pounce")
-
-def on_manual_mode():
-    print("Manual mode")
-
-def on_auto_mode():
-    print(f"Auto mode | objective={get_objective()}")
+    global robot, robot_manual_control
+    if robot is not None and robot_manual_control:
+        run_async(move.perform_action(robot.conn, "FrontPounce"))
 
 def on_power_off():
-    print("Power Off")
+    global robot
+    if robot is not None:
+        run_async(move.perform_action(robot.conn, "StandDown"))
+
+def on_manual_mode():
+    global robot_manual_control
+    robot_manual_control = True
+    cancel_objective() 
+    if robot is not None:
+        robot.stop = True
+
+def on_auto_mode():
+    global robot_manual_control
+    robot_manual_control = False
+
+def on_power_off():
+    global robot
+    if robot is not None:
+        run_async(move.perform_action(robot.conn, "StandDown"))
 
 def on_run_detection():
     if detection is not None:
         start_detection()
     
-def on_model_path():
-    from tkinter import filedialog
-    path = filedialog.askopenfilename(title="Select Detection Model")
-    print(f"Model path: {path}")
+objective_loop = asyncio.new_event_loop()
 
-def on_config_path():
-    from tkinter import filedialog
-    path = filedialog.askopenfilename(title="Select Model Configuration")
-    print(f"Config path: {path}")
+def objective_run_loop():
+    asyncio.set_event_loop(objective_loop)
+    objective_loop.run_forever()
 
-def on_labels_path():
-    from tkinter import filedialog
-    path = filedialog.askopenfilename(title="Select Model Labels")
-    print(f"Labels path: {path}")
+threading.Thread(target=objective_run_loop, daemon=True).start()
+
+_objective_task = None
+
+def run_objective_async(coro):
+    global _objective_task
+    # Cancel previous task if still running
+    if _objective_task is not None and not _objective_task.done():
+        _objective_task.cancel()
+    # Submit new task and store reference
+    _objective_task = asyncio.run_coroutine_threadsafe(coro, objective_loop)
+
+def cancel_objective():
+    global _objective_task
+    if _objective_task is not None and not _objective_task.done():
+        _objective_task.cancel()
+        _objective_task = None
+
+def on_auto_run():
+    if robot is not None:
+        cancel_objective()
+        robot.stop = False
+        get_objective()  
+
 
 connection_button.config(command=on_connect)
 forward_button.config(command=on_forward)
@@ -569,29 +686,42 @@ manual_mode_button.config(command=on_manual_mode)
 auto_mode_button.config(command=on_auto_mode)
 power_off_mode_button.config(command=on_power_off)
 run_detection_button.config(command=on_run_detection)
-model_path_button.config(command=on_model_path)
-config_path_button.config(command=on_config_path)
-labels_path_button.config(command=on_labels_path)
+auto_run_button.config(command=on_auto_run)
 
-# Default Detection Model
-hef_path    = "config/balloonv8s.hef"
-config_path = "config/config.json"
-labels_path = "config/balloon.txt"
 
 # Detection Pipeline
-detection = DetectionPipeline(hef_path, config_path, labels_path, headless=True, resolution=(1280, 720), framerate=60)
-ms_per_frame = int(1000 / detection.framerate)
-
+detection = None
+ms_per_frame = None
 detection_thread = None
 
 def start_detection():
-    global detection_thread
+    global detection_thread, detection, ms_per_frame
+
+    hef_path = get_model()
+    config_path = get_config()
+    labels_path = get_labels()
 
     if detection_thread is not None and detection_thread.is_alive():
+        detection.running = False
         detection.stop()
-        detection_thread.join(timeout=3)
+        detection_thread.join()
+        detection_thread = None
+        detection = None
 
-    detection_thread = threading.Thread(target=detection.run, daemon=True)
+    detection = DetectionPipeline(hef_path, config_path, labels_path, headless=True, resolution=(1280, 720), framerate=60)
+    ms_per_frame = ms_per_frame = int(1000 / detection.framerate)
+    
+    get_camera_source()
+    get_resolution()
+    get_frame_rate()
+
+    if hef_path is None or config_path is None:
+        detection.running = True
+        detection_thread = threading.Thread(target=detection.camera_output, daemon=True)
+    else:
+        detection.running = True
+        detection_thread = threading.Thread(target=detection.run, daemon=True)
+
     detection_thread.start()
 
 start_detection()
@@ -599,18 +729,24 @@ start_detection()
 
 
 # Robot Connection
-dog = None
+robot = None
+robot_manual_control = False
+
+def run_async(task):
+    threading.Thread(target=lambda: asyncio.run(task), daemon=True).start()
 
 def robot_connection_setup():
 
     async def setup():
-        global dog
+        global robot
 
-        dog = WebRTCConnection()
-        await dog.connection_setup(get_connection_method(), get_ip(), get_serial_number(), get_username(), get_password())
+        robot = WebRTCConnection()
+        await robot.connection_setup(get_connection_method(), get_ip(), get_serial_number(), get_username(), get_password())
         
         while True:
-            dog.status_check()
+            robot.status_check()
+            await robot.low_battery_action()
+
             await asyncio.sleep(1)
         
     def async_setup():
@@ -622,32 +758,33 @@ def robot_connection_setup():
 
 
 def update_robot_status():
-    global dog
-    robot_battery = dog.state_of_charge if dog is not None else None
+    global robot
+    robot_battery = robot.state_of_charge if robot is not None else None
+    robot_velocity = robot.velocity if robot is not None else None
+    robot_temp = robot.temperature if robot is not None else None
+    robot_motor_temperature = robot.motor_temperature if robot is not None else None
+    
     pi_battery = utils.pi_battery_soc()
-    robot_roll = None
-    robot_pitch = None
-    robot_yaw = None
     cpu_temp = utils.cpu_temp()
     cpu_load = utils.cpu_load()
     npu_temp = utils.npu_temp()
     npu_load = utils.npu_load()
-    robot_motor_max_temp = dog.motor_temperature_list if dog else None
 
     def status_check(value, suffix=""):
         return f"{value}{suffix}" if value is not None else "N/A"
     
-    robot_battery_label.config(text=f"Robot Battery : {status_check(robot_battery, "%")}")
-    pi_battery_label.config(   text=f"Pi Battery    : {status_check(pi_battery, "%")}")
-    robot_roll_label.config(   text=f"Roll          : {status_check(robot_roll)}")
-    robot_pitch_label.config(  text=f"Pitch         : {status_check(robot_pitch)}")
-    robot_yaw_label.config(    text=f"Yaw           : {status_check(robot_yaw)}")
-    cpu_temp_label.config(     text=f"CPU Temp      : {status_check(cpu_temp, "°C")}")
-    cpu_load_label.config(     text=f"CPU Load      : {status_check(cpu_load, "%")}")
-    npu_temp_label.config(     text=f"NPU Temp      : {status_check(npu_temp, "°C")}")
-    npu_load_label.config(     text=f"NPU Load      : {status_check(npu_load, "%")}")
+    robot_battery_label.config(text=f"Robot Battery        : {status_check(robot_battery, "%")}")
+    robot_speed_label.config(text=f"Robot Speed          : {status_check(robot_velocity)}")
+    robot_temp_label.config(text=f"Robot Temp           : {status_check(robot_temp)}")
+    robot_motor_temperature_label.config(text=f"Robot Max Motor Temp : {status_check(robot_motor_temperature)}")
+    
+    pi_battery_label.config(text=f"Pi Battery           : {status_check(pi_battery)}")
+    cpu_temp_label.config(text=f"CPU Temp             : {status_check(cpu_temp, "°C")}")
+    cpu_load_label.config(text=f"CPU Load             : {status_check(cpu_load, "%")}")
+    npu_temp_label.config(text=f"NPU Temp             : {status_check(npu_temp, "°C")}")
+    npu_load_label.config(text=f"NPU Load             : {status_check(npu_load, "%")}")
 
-    if dog is not None:
+    if robot is not None:
         connection_status_label.config(text="● CONNECTED", fg=SUCCESS)
     else:
         connection_status_label.config(text="● NO CONNECTION", fg=DANGER)
@@ -655,10 +792,11 @@ def update_robot_status():
     window.after(500, update_robot_status)
 
 def update_detection_status():
-    detected = detection.detected
-    detection_confidence = detection.confidence_score
-    distance = detection.min_distance
-    predicted_distance = detection.future_distance
+    if detection is not None:
+        detected = detection.detected
+        detection_confidence = detection.confidence_score
+        distance = detection.min_distance
+        predicted_distance = detection.future_distance
 
     def status_check(value):
         return value if value is not None else "N/A"
@@ -671,13 +809,9 @@ def update_detection_status():
     window.after(500, update_detection_status)
 
 def input_field_check():
-    get_objective()
     get_move_speed()
     get_rotate_speed()
     get_pitch_speed()
-    get_camera_source()
-    get_resolution()
-    get_frame_rate()
     get_prediction_steps()
     get_object_height()
     get_distance_calibration()

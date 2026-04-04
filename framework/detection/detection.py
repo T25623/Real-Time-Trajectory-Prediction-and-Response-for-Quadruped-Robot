@@ -25,6 +25,7 @@ import time
 from framework.detection.kalman_filter import KalmanFilter
 import numpy as np
 from collections import deque
+from picamera2 import Picamera2
 
 class DetectionPipeline:
     def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, camera_focal_length=0.275, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter.xyz_predict(), predict_steps=15, FPS_counter=False, trail_length=30, headless=False) -> None:
@@ -62,8 +63,7 @@ class DetectionPipeline:
         self.output_queue = queue.Queue(maxsize=2)
         self.display_queue = None
 
-        self.trail_length = trail_length
-        self.trail = deque(maxlen=self.trail_length)
+        self.trail = deque(maxlen=trail_length)
 
         self.kalman_filter = kalman_filter
         self.predict_steps = predict_steps
@@ -178,6 +178,53 @@ class DetectionPipeline:
         except queue.Full:
             pass
 
+    def camera_output(self):
+        prev_frame_time = time.time()
+        fps_time = prev_frame_time 
+        fps_total = 0
+        frame_count = 0
+        fps_text = "FPS: 0"
+        
+        picam2 = Picamera2()
+        config = picam2.create_preview_configuration(
+            main={"size": self.resolution, "format": self.colour_format},
+            controls={"FrameRate": self.framerate}
+        )
+
+        picam2.configure(config)
+        picam2.start()
+        
+        try:
+            while self.running:
+                frame = picam2.capture_array()
+                if frame is None:
+                    break
+
+                if self.FPS_counter:
+                    new_frame_time = time.time()
+                    fps_total += 1 / (new_frame_time - prev_frame_time + 1000)
+                    frame_count += 1
+                    prev_frame_time = new_frame_time
+
+                    if new_frame_time >= fps_time + 1:
+                        fps_text = f"FPS: {fps_total / frame_count:.1f}"
+                        fps_total, frame_count, fps_time = 0, 0, new_frame_time
+
+                if self.FPS_counter:
+                    scaled_size = round(self.resolution[0] / 1000)  
+                    cv2.putText(frame, fps_text, (5, (scaled_size*30)), cv2.FONT_HERSHEY_SIMPLEX, scaled_size, (100, 255, 0), scaled_size, cv2.LINE_AA)
+                                    
+                self.display_queue = frame
+        
+        except Exception as e:
+            print(e)
+
+        finally:
+            self.display_queue = None
+            picam2.stop()
+            picam2.close()
+
+
     def run(self):
         self.running = True
         self._stop_event.clear()
@@ -200,7 +247,7 @@ class DetectionPipeline:
 
                 if self.FPS_counter:
                     new_frame_time = time.time()
-                    fps_total += 1 / (new_frame_time - prev_frame_time + 1e-5)
+                    fps_total += 1 / (new_frame_time - prev_frame_time + 1000)
                     frame_count += 1
                     prev_frame_time = new_frame_time
 

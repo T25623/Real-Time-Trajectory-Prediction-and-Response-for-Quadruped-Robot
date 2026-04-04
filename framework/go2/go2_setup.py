@@ -6,6 +6,7 @@ from enum import Enum
 import queue
 import numpy as np
 import framework.utils.go2_utils as utils
+import framework.go2.go2_movement as move
 
 
 class LidarDecoder(Enum):
@@ -17,12 +18,14 @@ class WebRTCConnection:
     def __init__(self):
         self.conn = None
 
+        self.stop = False
+
         self.lidar_queue = None
         self.lidar_origin = None
 
         self.state_of_charge = None
         self.orientation = None
-        self.motor_temperature_list = None
+        self.motor_temperature = None
         self.velocity = None
         self.gyroscope = None
         self.temperature = None
@@ -30,6 +33,8 @@ class WebRTCConnection:
         self.movement_speed = None
         self.rotate_speed = None
         self.pitch_speed = None
+
+        self.avoid_vector = None
     
     async def connection_setup(self, connection_method="LocalAP",  ip=None, serial_number=None, username=None, password=None):
         match connection_method:
@@ -85,12 +90,13 @@ class WebRTCConnection:
     def state_callback(self, message):
         self.orientation = utils.orientation_calculation(message)
         self.state_of_charge = utils.battery_state_of_charge_data(message)
-        self.motor_temperature_list = utils.motor_temperature_data(message)
+        self.motor_temperature = utils.motor_temperature_data(message)
 
     def sportmode_state_callback(self, message):
         self.temperature = utils.robot_temperature(message)
         self.velocity = utils.robot_velocity(message)
         self.gyroscope = utils.robot_gyroscope(message)
+        # utils.sportmode_state_print(message)
 
     def lidar_callback(self, message):
         self.lidar_queue = message 
@@ -101,6 +107,10 @@ class WebRTCConnection:
         self.sportmode_state_call()
         self.state_call()
 
+    async def low_battery_action(self):
+        if self.state_of_charge is not None:
+            if self.state_of_charge <= 5:
+                await move.perform_action(self.conn, "StandDown")
                 
 
 

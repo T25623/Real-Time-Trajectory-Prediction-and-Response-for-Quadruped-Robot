@@ -26,7 +26,7 @@ def motor_temperature_data(state):
     for motor in motor_state:
         motor_temperature_list.append(motor["temperature"])
 
-    return motor_temperature_list
+    return max(motor_temperature_list)
 
 def lidar_origin_calculation(message):
     origin = np.array(message["data"]["origin"], dtype=float)
@@ -78,12 +78,15 @@ def npu_temp():
 def npu_load():
     return 0
 
+pi_voltage_level = "High"
 def pi_battery_soc():
+    global pi_voltage_level
     result = subprocess.run("vcgencmd pmic_read_adc | grep EXT5V_V", shell=True, capture_output=True, text=True)
 
-    voltage = result.stdout.strip().split("=")[-1].replace("V", "")
-    voltage = float(voltage)
-    return round(voltage, 2)
+    voltage = float(result.stdout.strip().split("=")[-1].replace("V", ""))
+    if voltage < 4.95:
+        pi_voltage_level = "Low"
+    return pi_voltage_level
 
 def cpu_temp():
     result = subprocess.run("vcgencmd measure_temp", shell=True, capture_output=True, text=True)

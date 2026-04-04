@@ -81,8 +81,14 @@ def update_plotter(plotter, filtered_points, nearby_points, arrow_direction, cen
     plotter.add_points(np.array([center]), color='yellow', point_size=15, render_points_as_spheres=True)
     plotter.update()
 
-    
 def run(plotter, points, center, inrange_distance, facing):
+    filtered_points = lidar_point_cloud_processing(points, center)
+    nearby_points = inrange_points(filtered_points, center, inrange_distance)
+    vector = vector_towards_emptyness(nearby_points, center)
+
+    return vector
+    
+def run_with_plot(plotter, points, center, inrange_distance, facing):
     filtered_points = lidar_point_cloud_processing(points, center)
     nearby_points = inrange_points(filtered_points, center, inrange_distance)
     vector = vector_towards_emptyness(nearby_points, center)

@@ -3,11 +3,37 @@ import asyncio
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 
 async def go2_movement(conn, x, y, z):
+    # await enable_movement(conn)
     response = await conn.datachannel.pub_sub.publish_request_new(
         RTC_TOPIC["SPORT_MOD"],
         # X = Forwards/Backwards, Y = Left/Right, Z = Rotation
         {"api_id": SPORT_CMD["Move"], "parameter": {"x": x, "y": y, "z": z}}
     )
+
+async def enable_movement(conn):
+    response = await conn.datachannel.pub_sub.publish_request_new(
+        RTC_TOPIC["MOTION_SWITCHER"], 
+        {"api_id": 1001}
+    )
+    print(response)
+
+    if response['data']['header']['status']['code'] == 0:
+        data = json.loads(response['data']['data'])
+        current_motion_switcher_mode = data['name']
+    
+    print(f"Current motion mode: {current_motion_switcher_mode}")
+
+    # Switch to "normal" mode if not already
+    if current_motion_switcher_mode != "normal":
+        print(f"Switching motion mode from {current_motion_switcher_mode} to 'normal'...")
+        await conn.datachannel.pub_sub.publish_request_new(
+            RTC_TOPIC["MOTION_SWITCHER"], 
+            {
+                "api_id": 1002,
+                "parameter": {"name": "normal"}
+            }
+        )
+        await asyncio.sleep(2)
 
 
 async def go2_euler(conn, x, y, z):
@@ -112,3 +138,59 @@ def calculate_pitch(offset_ratio, deadzone, scale_factor, current_pitch, max_pit
     
     return pitch_position
 
+async def avoid_obstacle(robot):
+    facing_correction = utils.calculate_facing_correction(robot.orientation)
+    vector = utils.rotate_vector(robot.avoid_vector, facing_correction)
+            
+    await go2_movement(robot.conn, (vector[1]*0.1), (-vector[0]*0.1), 0)
+
+async def avoid_response(robot, detection, track=True):
+    while not robot.stop:
+        if robot.avoid_vector is not None:
+            await avoid_obstacle(robot)
+
+        elif detection.detected:
+            if detection.future_distance >= -0.1 and detection.future_distance <= 0.3: 
+                forward = calculate_movement(detection.future_distance, 0.1, 0.2, robot.movement_speed)
+                rotate = calculate_rotation(detection.future_center_x, 0.1, robot.rotate_speed)
+                    
+                pitch = calculate_pitch(detection.future_center_y, 0.1, robot.pitch_speed, pitch) 
+                await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
+
+        await asyncio.sleep(0.05)
+
+
+
+async def movement_response(robot, detection, track=True):
+    pitch = 0
+    response_action = "Hello"
+    
+    try:
+        while not robot.stop:
+            print(f"tick | stop={robot.stop} | detected={detection.detected} | dist={detection.future_distance}")
+            if robot.avoid_vector is not None:
+                await avoid_obstacle(robot)
+            
+            elif detection.detected:
+                if detection.future_distance >= -0.1 and detection.future_distance <= 0.3:
+                    if track:
+                        await asyncio.sleep(1.5)
+                    
+                    await perform_action(robot.conn, response_action)
+                    pitch = 0
+                
+                elif track:
+                    forward = calculate_movement(detection.future_distance, 0.1, 0.2, robot.movement_speed)
+                    rotate = calculate_rotation(detection.future_center_x, 0.1, robot.rotate_speed)
+                   
+                    pitch = calculate_pitch(detection.future_center_y, 0.1, robot.pitch_speed, pitch)
+                    await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
+            
+            await asyncio.sleep(0.05)
+    
+    except asyncio.CancelledError:
+        print("movement_response cancelled")
+    
+    except Exception as e:
+        print(f"movement_response crashed: {e}")
+        raise
