@@ -49,7 +49,7 @@ async def go2():
     while True:
         dog.state_call()
         message = dog.lidar_queue
-
+        
         if vector is not None:
 
             facing_correction = calculate_facing_correction(dog.orientation)
@@ -76,7 +76,7 @@ detection_thread = threading.Thread(target=detection.run, daemon=True)
 detection_thread.start()
 
 
-# lidar_thread = threading.Thread(target=lidar_visuals, daemon=True)
-# lidar_thread.start()
+lidar_thread = threading.Thread(target=lidar_visuals, daemon=True)
+lidar_thread.start()
 
 asyncio.run(go2())

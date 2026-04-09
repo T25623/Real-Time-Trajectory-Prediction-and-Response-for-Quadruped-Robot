@@ -65,10 +65,10 @@ def vector_towards_emptyness(points, center):
 
 def update_plotter(plotter, filtered_points, nearby_points, arrow_direction, center, facing=None):
     plotter.clear()
-    plotter.add_points(filtered_points, color='black', point_size=2, render_points_as_spheres=True)
+    plotter.add_points(filtered_points, color='black', point_size=10, render_points_as_spheres=True)
     
     if len(nearby_points) > 0:
-        plotter.add_points(nearby_points, color='red', point_size=5, render_points_as_spheres=True)
+        plotter.add_points(nearby_points, color='red', point_size=25, render_points_as_spheres=True)
     
     if arrow_direction is not None:
         arrow = pv.Arrow(start=center, direction=arrow_direction, scale=0.5)
@@ -93,6 +93,14 @@ def run_with_plot(plotter, points, center, inrange_distance, facing):
     nearby_points = inrange_points(filtered_points, center, inrange_distance)
     vector = vector_towards_emptyness(nearby_points, center)
 
+    plotter.camera.position = (center[0], center[1], 20)
+    plotter.camera.focal_point = (center[0], center[1], 0)
+    plotter.camera.up = (0, 1, 0)
+    plotter.camera.parallel_projection = True
+    plotter.camera.parallel_scale = 1.5
+
+    frame = plotter.screenshot(return_img=True)
     update_plotter(plotter, filtered_points, nearby_points, vector, center, facing=facing)
-    return vector
+    
+    return vector, frame
     

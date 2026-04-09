@@ -7,7 +7,6 @@ import asyncio
 import framework.go2.go2_movement as move
 import threading
 import numpy as np
-import pyvista as pv
 import framework.utils.go2_utils as utils
 from tkinter import *
 from tkinter.ttk import Combobox, Notebook, Style
@@ -16,6 +15,7 @@ import time
 import cv2
 from collections import deque
 from pathlib import Path
+import pyvista as pv
 
 # Colours & Fonts
 BG = "#0f1117"
@@ -428,16 +428,24 @@ Frame(setup_tab, bg=BG2, height=10).grid(row=20, column=0)
 section_label(lidar_tab, "Lidar").grid(row=0, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
 separator(lidar_tab).grid(row=1, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
-lidar_var = IntVar()
 boundary_var = IntVar()
-lidar_switch = make_check(lidar_tab, "Lidar On", lidar_var)
+lidar_switch_button = make_button(lidar_tab, "Lidar On", color=ACCENT, hover=ACCENT_DIM, width=9)
 boundry_detection_switch = make_check(lidar_tab, "Boundary Detection On", boundary_var)
-lidar_switch.grid( row=2, column=0, columnspan=2, padx=12, pady=3, sticky=W)
+lidar_switch_button.grid(row=2, column=0, columnspan=2, padx=12, pady=3, sticky=W)
 boundry_detection_switch.grid(row=3, column=0, columnspan=2, padx=12, pady=3, sticky=W)
 
-lidar_refresh_rate_slider = make_scale(lidar_tab, from_=1, to=100)
-lidar_refresh_rate_slider.set(100)
-tab_row(lidar_tab, 4, "Refresh Rate", lidar_refresh_rate_slider)
+refresh_row = Frame(lidar_tab, bg=BG2)
+refresh_row.grid(row=4, column=0, columnspan=2, padx=12, pady=2, sticky=EW)
+lidar_tab.grid_columnconfigure(0, weight=1)
+dim_label(refresh_row, "Refresh Rate", width=14).pack(side=LEFT, anchor=W)
+lidar_refresh_rate_slider = make_scale(refresh_row, from_=1, to=10)
+lidar_refresh_rate_slider.set(1)
+lidar_refresh_rate_slider.pack(side=LEFT, fill=X, expand=True)
+
+lidar_panel = panel(lidar_tab)
+lidar_panel.grid(row=5, column=0, columnspan=2, padx=8, pady=(4,6), sticky=EW)
+lidar = Label(lidar_panel, bg="#000000", text="No Lidar", font=("Courier", 12), fg=FG_DIM)
+lidar.pack(padx=2, pady=2)
 
 Frame(lidar_tab, bg=BG2, height=10).grid(row=5, column=0)
 
@@ -529,11 +537,12 @@ def get_trail_length():
         detection.trail = deque(maxlen=int(trail_length_slider.get())) 
 
 def get_lidar_refresh_rate():
-    return lidar_refresh_rate_slider.get()
+    return int(lidar_refresh_rate_slider.get())
 
 def get_show_fps():
     if detection is not None:
         detection.FPS_counter = bool(show_fps_var.get())
+
 
 def get_model():
     model = model_path_combobox.get()
@@ -570,13 +579,9 @@ def on_connect():
 
 def on_forward():
     global robot, robot_manual_control
-    print("press")
     if robot is not None and robot_manual_control:
-        print("move")
         move_speed = 5 * (move_speed_slider.get() / 100)
-        print("move_speed")
         run_async(move.go2_movement(robot.conn, move_speed, 0, 0))
-        print("moved")
 
 def on_backward():
     global robot, robot_manual_control
@@ -657,6 +662,11 @@ def on_auto_run():
     if robot is not None:
         get_objective()  
 
+def on_lidar():
+    if robot is not None:
+        lidar_thread()
+        update_lidar()
+
 
 connection_button.config(command=on_connect)
 forward_button.config(command=on_forward)
@@ -674,6 +684,7 @@ auto_mode_button.config(command=on_auto_mode)
 power_off_mode_button.config(command=on_power_off)
 run_detection_button.config(command=on_run_detection)
 auto_run_button.config(command=on_auto_run)
+lidar_switch_button.config(command=on_lidar)
 
 
 # Detection Pipeline
@@ -718,6 +729,7 @@ start_detection()
 # Robot Connection
 robot = None
 robot_manual_control = False
+lidar_image = None
 
 def run_async(task):
     threading.Thread(target=lambda: asyncio.run(task), daemon=True).start()
@@ -750,7 +762,33 @@ def robot_connection_setup():
     robot_thread = threading.Thread(target=async_setup, daemon=True)
     robot_thread.start()
 
+def lidar_display():
+    global robot, lidar_image
+    plotter = pv.Plotter(off_screen=True)
+    plotter.show(interactive_update=True)
+    while True:
+        if not robot.lidar_queue == None:
+            points = np.array(robot.lidar_queue["data"]["data"]["points"])
 
+            facing = np.array(robot.orientation)
+            facing = facing / np.linalg.norm(facing) 
+
+            sensor_offset = 0.3
+            origin = np.array(robot.lidar_origin) + facing * sensor_offset
+
+            robot.avoid_vector, lidar_image = dl.run_with_plot(plotter, points, origin, 0.3, robot.orientation)
+
+            if not bool(boundary_var):
+                robot.avoid_vector = None
+
+            time.sleep(1/get_lidar_refresh_rate())
+
+
+def lidar_thread():
+    robot.lidar_setup(True, 0)
+
+    lidar_thread = threading.Thread(target=lidar_display, daemon=True)
+    lidar_thread.start() 
 
 def update_robot_status():
     global robot
@@ -813,7 +851,6 @@ def input_field_check():
     get_trail_length()
     get_lidar_refresh_rate()
     get_show_fps()
-
     window.after(500, input_field_check)
 
 
@@ -837,9 +874,29 @@ def update_video():
 
     window.after(int(1000/30), update_video)
 
+
+def update_lidar():
+    global lidar_image
+    window_width  = window.winfo_width()
+    window_height = window.winfo_height()
+    video_size = (int(window_width * 0.25), int(window_height * 0.25))
+
+    if lidar_image is not None:
+        if lidar_image.shape[:2][::-1] != video_size:
+            lidar_image = cv2.resize(lidar_image, video_size, interpolation=cv2.INTER_NEAREST)
+
+        image = Image.fromarray(lidar_image)
+        tk_image = ImageTk.PhotoImage(image=image)
+
+        lidar.imgtk = tk_image
+        lidar.configure(image=tk_image)
+
+    window.after(int(1000/get_lidar_refresh_rate()), update_lidar)
+
 input_field_check()
 update_video()
 update_robot_status()
 update_detection_status()
+
 
 window.mainloop()
