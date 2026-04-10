@@ -1,0 +1,18 @@
+[console_scripts]
+get-usb-camera = hailo_apps.python.core.common.camera_utils:main
+hailo-audio-troubleshoot = hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_troubleshoot:main
+hailo-clip = hailo_apps.python.pipeline_apps.clip.clip:main
+hailo-compile-postprocess = hailo_apps.installation.compile_cpp:main
+hailo-depth = hailo_apps.python.pipeline_apps.depth.depth:main
+hailo-detect = hailo_apps.python.pipeline_apps.detection.detection:main
+hailo-detect-simple = hailo_apps.python.pipeline_apps.detection_simple.detection_simple:main
+hailo-download-resources = hailo_apps.installation.download_resources:main
+hailo-face-recon = hailo_apps.python.pipeline_apps.face_recognition.face_recognition:main
+hailo-multisource = hailo_apps.python.pipeline_apps.multisource.multisource:main
+hailo-ocr = hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr:main
+hailo-pose = hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation:main
+hailo-post-install = hailo_apps.installation.post_install:main
+hailo-reid = hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource:main
+hailo-seg = hailo_apps.python.pipeline_apps.instance_segmentation.instance_segmentation:main
+hailo-set-env = hailo_apps.installation.set_env:main
+hailo-tiling = hailo_apps.python.pipeline_apps.tiling.tiling:main
