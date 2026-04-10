@@ -739,21 +739,25 @@ def robot_connection_setup():
     async def setup():
         global robot
         response_action = "Hello"
+        while robot is None:
+            robot = WebRTCConnection()
+            await robot.connection_setup(get_connection_method(), get_ip(), get_serial_number(), get_username(), get_password())
+            
+        while robot is not None:
+            if robot.conn.datachannel.pub_sub.channel.readyState != "open":
+                robot = None
+                break
 
-        robot = WebRTCConnection()
-        await robot.connection_setup(get_connection_method(), get_ip(), get_serial_number(), get_username(), get_password())
-        
-        while True:
             robot.status_check()
             await robot.low_battery_action()
-            
+                
             if detection is not None:
                 if robot.objective == Objective.Track_Hit:
                     await move.movement_response(robot, detection, True, response_action)
-                
+                    
                 elif robot.objective == Objective.Stand_Hit:
                     await move.movement_response(robot, detection, False, response_action)
-
+        
             await asyncio.sleep(0.1)
         
     def async_setup():
@@ -766,7 +770,7 @@ def lidar_display():
     global robot, lidar_image
     plotter = pv.Plotter(off_screen=True)
     plotter.show(interactive_update=True)
-    while True:
+    while robot is not None:
         if not robot.lidar_queue == None:
             points = np.array(robot.lidar_queue["data"]["data"]["points"])
 

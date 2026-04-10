@@ -22,13 +22,13 @@ import queue
 import threading
 import cv2
 import time
-from framework.detection.kalman_filter import KalmanFilter
+from framework.detection.kalman_filter import KalmanFilter, UnscentedKalmanFilter
 import numpy as np
 from collections import deque
 from picamera2 import Picamera2
 
 class DetectionPipeline:
-    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, camera_focal_length=0.275, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter.xyz_predict(), predict_steps=15, FPS_counter=False, trail_length=30, headless=False) -> None:
+    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, camera_focal_length=0.275, colour_format="RGB888", batch_size=1, kalman_filter=UnscentedKalmanFilter.xyz_predict(), predict_steps=15, FPS_counter=False, trail_length=30, headless=False) -> None:
         # Camera config
         self.source = source
         self.resolution = resolution
