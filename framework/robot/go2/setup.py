@@ -5,8 +5,8 @@ import re
 from enum import Enum
 import queue
 import numpy as np
-import framework.utils.go2_utils as utils
-import framework.go2.go2_movement as move
+import framework.utils.utils as utils
+import framework.robot.go2.movement as move
 
 
 class LidarDecoder(Enum):

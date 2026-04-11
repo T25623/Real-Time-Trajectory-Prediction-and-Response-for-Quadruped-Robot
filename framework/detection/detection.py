@@ -22,7 +22,7 @@ import queue
 import threading
 import cv2
 import time
-from framework.detection.kalman_filter import KalmanFilter, UnscentedKalmanFilter
+from framework.prediction.kalman_filter import KalmanFilter, UnscentedKalmanFilter
 import numpy as np
 from collections import deque
 from picamera2 import Picamera2

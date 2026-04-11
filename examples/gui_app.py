@@ -1,13 +1,13 @@
-from framework.go2.go2_setup import WebRTCConnection
-import framework.go2.go2_setup as go2
-from framework.go2.go2_setup import Objective
-import framework.lidar.display_lidar as dl
+from framework.robot.go2.setup import WebRTCConnection
+import framework.robot.go2.setup as go2
+from framework.robot.go2.setup import Objective
+import framework.robot.go2.lidar as go2_lidar
 from framework.detection.detection import DetectionPipeline
 import asyncio
-import framework.go2.go2_movement as move
+import framework.robot.go2.movement as move
 import threading
 import numpy as np
-import framework.utils.go2_utils as utils
+import framework.utils.utils as utils
 from tkinter import *
 from tkinter.ttk import Combobox, Notebook, Style
 from PIL import Image, ImageTk
@@ -375,9 +375,9 @@ tab_row(setup_tab, 5, "", run_detection_button)
 section_label(setup_tab, "Detection Model").grid(row=6, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
 separator(setup_tab).grid(row=7, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
-model_paths_map = file_map("hef", "config")
-config_paths_map = file_map("json", "config")
-label_paths_map = file_map("txt", "config")
+model_paths_map = file_map("hef", "config/models")
+config_paths_map = file_map("json", "config/json")
+label_paths_map = file_map("txt", "config/labels")
 
 models = tuple(model_paths_map.keys()) + ("None",)
 configs = tuple(config_paths_map.keys()) + ("None",)
@@ -780,7 +780,7 @@ def lidar_display():
             sensor_offset = 0.3
             origin = np.array(robot.lidar_origin) + facing * sensor_offset
 
-            robot.avoid_vector, lidar_image = dl.run_with_plot(plotter, points, origin, 0.3, robot.orientation)
+            robot.avoid_vector, lidar_image = go2_lidar.run_with_plot(plotter, points, origin, 0.3, robot.orientation)
 
             if not bool(boundary_var):
                 robot.avoid_vector = None

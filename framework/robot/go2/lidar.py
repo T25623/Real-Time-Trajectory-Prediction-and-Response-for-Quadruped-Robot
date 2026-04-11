@@ -1,11 +1,11 @@
 import pandas as pd
 import pyvista as pv
 import numpy as np
-import framework.go2.go2_setup as go2
-from framework.go2.go2_setup import WebRTCConnection
+import framework.robot.go2.setup as go2
+from framework.robot.go2.setup import WebRTCConnection
 import asyncio
 from framework.detection.detection import DetectionPipeline
-from framework.detection.kalman_filter import KalmanFilter
+from framework.prediction.kalman_filter import KalmanFilter
 import time
 
 def lidar_point_cloud_processing(points, center, x_distance=1, y_distance=1, z_distance=0.3):

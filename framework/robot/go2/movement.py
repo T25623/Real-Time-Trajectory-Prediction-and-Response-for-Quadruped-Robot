@@ -1,4 +1,4 @@
-import framework.utils.go2_utils as utils
+import framework.utils.utils as utils
 import asyncio
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 
