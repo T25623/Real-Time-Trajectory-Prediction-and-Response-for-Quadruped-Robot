@@ -360,7 +360,7 @@ def tab_row(parent, row, label_text, widget):
 section_label(setup_tab, "Camera").grid(row=0, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
 separator(setup_tab).grid(row=1, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
-camera_source_combobox = Combobox(setup_tab, values=("rpi","usb","Robot"), state="readonly", font=FONT_LABEL)
+camera_source_combobox = Combobox(setup_tab, values=("rpi","usb"), state="readonly", font=FONT_LABEL)
 camera_source_combobox.set("rpi")
 resolution_combobox = Combobox(setup_tab, values=("(1920x1080)","(1280x720)","(640x360)","(320x180)"), state="readonly", font=FONT_LABEL)
 resolution_combobox.set("(640x360)")
@@ -704,10 +704,14 @@ lidar_on_button.config(command=on_lidar)
 lidar_off_button.config(command=on_lidar_off)
 
 
-# Detection Pipeline
 detection = None
 ms_per_frame = None
 detection_thread = None
+robot = None
+robot_manual_control = False
+lidar_image = None
+
+# Detection Pipeline
 
 def start_detection():
     global detection_thread, detection, ms_per_frame
@@ -735,7 +739,7 @@ def start_detection():
         detection_thread = threading.Thread(target=detection.camera_output, daemon=True)
     else:
         detection.running = True
-        detection_thread = threading.Thread(target=detection.run, daemon=True)
+        detection_thread = threading.Thread(target=detection.run, args=(robot,), daemon=True)
 
     detection_thread.start()
 
@@ -744,9 +748,6 @@ start_detection()
 
 
 # Robot Connection
-robot = None
-robot_manual_control = False
-lidar_image = None
 
 def run_async(task):
     threading.Thread(target=lambda: asyncio.run(task), daemon=True).start()

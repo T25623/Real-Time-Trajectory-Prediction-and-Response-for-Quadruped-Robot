@@ -76,10 +76,16 @@ class DetectionPipeline:
 
         self.no_detection_time = time.time()
 
-    def setup_camera(self):
+    def setup_camera(self, robot):
+        
         resolution = {"size": self.resolution, "format": self.colour_format}
         framerate = {"FrameRate": self.framerate}
+        
+        if self.source == "usb":
+            resolution = f"{self.resolution[1]}p"
+
         return init_input_source(self.source, self.batch_size, resolution, framerate)
+
 
     def load_model(self):
         self.labels = get_labels(self.labels_path)
@@ -228,11 +234,11 @@ class DetectionPipeline:
             picam2.close()
 
 
-    def run(self):
+    def run(self, robot):
         self.running = True
         self._stop_event.clear()
 
-        cap, images = self.setup_camera()
+        cap, images = self.setup_camera(robot)
         height, width, _ = self.load_model()
         self.start_threads(images, cap, width, height)
         

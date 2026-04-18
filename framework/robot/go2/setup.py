@@ -8,6 +8,7 @@ import numpy as np
 import framework.utils.utils as utils
 import framework.robot.go2.movement as move
 import time
+from aiortc import MediaStreamTrack
 
 class LidarDecoder(Enum):
     Native = 0
@@ -40,6 +41,8 @@ class WebRTCConnection:
         self.avoid_vector = None
 
         self.objective = None
+
+        self.camera = None
     
     async def connection_setup(self, connection_method="LocalAP",  ip=None, serial_number=None, username=None, password=None):
         match connection_method:
@@ -56,6 +59,7 @@ class WebRTCConnection:
         await self.conn.connect()
         await self.conn.datachannel.disableTrafficSaving(True)
         # await motion_switcher(self.conn)
+
 
     def lidar_sensor_activate(self, lidar_on=True):
         if lidar_on:
@@ -124,7 +128,4 @@ class WebRTCConnection:
             if self.state_of_charge <= 5:
                 await move.perform_action(self.conn, "StandDown")
                 
-
-
-    
-
+        
