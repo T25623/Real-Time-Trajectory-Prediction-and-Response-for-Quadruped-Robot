@@ -1,6 +1,7 @@
 import framework.utils.utils as utils
 import asyncio
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
+import time
 
 async def go2_movement(conn, x, y, z):
     # await enable_movement(conn)
@@ -157,21 +158,23 @@ async def avoid_response(robot, detection, track=True):
                 pitch = calculate_pitch(detection.future_center_y, 0.1, robot.pitch_speed, pitch) 
                 await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
 
-        await asyncio.sleep(0.05)
 
-
-
+st = time.time()
 async def movement_response(robot, detection, track, response_action):
+    global st
     pitch = 0
-    
     if robot.avoid_vector is not None:
         await avoid_obstacle(robot)
+        
+    elif (time.time() - detection.no_detection_time) >= 5 and not detection.detected and (time.time() - st) >= 3:
+        st = time.time()
+        await go2_movement(robot.conn, 0, 0, 2)
             
     elif detection.detected:
         if detection.future_distance >= -0.1 and detection.future_distance <= 0.3:
             if track:
                 await asyncio.sleep(1.5)
-                    
+                        
             await perform_action(robot.conn, response_action)
             pitch = 0
                 
@@ -181,4 +184,6 @@ async def movement_response(robot, detection, track, response_action):
                    
             pitch = calculate_pitch(detection.future_center_y, 0.1, robot.pitch_speed, pitch)
             await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
+    
+    
 

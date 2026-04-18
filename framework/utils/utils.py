@@ -29,9 +29,9 @@ def motor_temperature_data(state):
     return max(motor_temperature_list)
 
 def lidar_origin_calculation(message):
-    origin = np.array(message["data"]["origin"], dtype=float)
-    width = np.array(message["data"]["width"], dtype=float)
-    resolution = np.array(message["data"]["resolution"], dtype=float)
+    origin = np.array(message["origin"], dtype=float)
+    width = np.array(message["width"], dtype=float)
+    resolution = np.array(message["resolution"], dtype=float)
     center = origin + (width * resolution) / 2
     return center
 

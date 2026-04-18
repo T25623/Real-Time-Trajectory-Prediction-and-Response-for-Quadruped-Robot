@@ -48,7 +48,7 @@ async def go2():
     pitch = 0
     while True:
         dog.state_call()
-        message = dog.lidar_queue
+        message = dog.lidar_data
         
         if vector is not None:
 

@@ -74,6 +74,8 @@ class DetectionPipeline:
         self.running = False
         self._stop_event = threading.Event()
 
+        self.no_detection_time = time.time()
+
     def setup_camera(self):
         resolution = {"size": self.resolution, "format": self.colour_format}
         framerate = {"FrameRate": self.framerate}
@@ -145,6 +147,7 @@ class DetectionPipeline:
             self.predicted_center_y = state[1,0]
             self.predicted_distance = state[2,0]
             self.detected = True
+            self.no_detection_time = 0
 
         else:
             self.detected = False

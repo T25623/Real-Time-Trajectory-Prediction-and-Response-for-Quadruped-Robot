@@ -15,7 +15,6 @@ import time
 import cv2
 from collections import deque
 from pathlib import Path
-import pyvista as pv
 
 # Colours & Fonts
 BG = "#0f1117"
@@ -192,6 +191,9 @@ pitch_speed_slider.set(0.5)
 
 auto_run_button = make_button(reponse_and_motion_container, "Auto Run", color=SUCCESS, hover=SUCCESS_DIM, fg=BG, width=9)
 auto_run_button.pack(side=LEFT, fill=X, expand=True)
+
+auto_run_stop_button = make_button(reponse_and_motion_container, "Stop Auto Run", color=DANGER, hover=DANGER_DIM, fg=BG, width=9)
+auto_run_stop_button.pack(side=LEFT, fill=X, expand=True)
 
 Frame(reponse_and_motion_container, bg=BG2, height=8).pack()
 
@@ -383,16 +385,17 @@ models = tuple(model_paths_map.keys()) + ("None",)
 configs = tuple(config_paths_map.keys()) + ("None",)
 labels = tuple(label_paths_map.keys()) + ("None",)
 
-model_path_combobox = Combobox(setup_tab, values=models, state="readonly", font=FONT_LABEL)
-model_path_combobox.set(models[0])
+model_path_combobox  = Combobox(setup_tab, values=models,  state="readonly", font=FONT_LABEL)
 config_path_combobox = Combobox(setup_tab, values=configs, state="readonly", font=FONT_LABEL)
+labels_path_combobox = Combobox(setup_tab, values=labels,  state="readonly", font=FONT_LABEL)
+model_path_combobox.set(models[0])
 config_path_combobox.set(configs[0])
-labels_path_combobox = Combobox(setup_tab, values=labels, state="readonly", font=FONT_LABEL)
 labels_path_combobox.set(labels[0])
 
-model_path_combobox.grid(row=8,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
-config_path_combobox.grid(row=9,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
-labels_path_combobox.grid(row=10,  column=0, columnspan=2, padx=12, pady=3, sticky=W)
+tab_row(setup_tab, 8,  "Model",  model_path_combobox)
+tab_row(setup_tab, 9,  "Config", config_path_combobox)
+tab_row(setup_tab, 10, "Labels", labels_path_combobox)
+
 
 # Prediction section
 section_label(setup_tab, "Prediction").grid(row=11, column=0, columnspan=2, padx=8, pady=(10,4), sticky=W)
@@ -429,10 +432,12 @@ section_label(lidar_tab, "Lidar").grid(row=0, column=0, columnspan=2, padx=8, pa
 separator(lidar_tab).grid(row=1, column=0, columnspan=2, padx=8, pady=(0,4), sticky=EW)
 
 boundary_var = IntVar()
-lidar_switch_button = make_button(lidar_tab, "Lidar On", color=ACCENT, hover=ACCENT_DIM, width=9)
+lidar_on_button = make_button(lidar_tab, "Lidar On", color=ACCENT, hover=ACCENT_DIM, width=9)
+lidar_off_button = make_button(lidar_tab, "Lidar Off", color=DANGER, hover=DANGER_DIM, width=9)
 boundry_detection_switch = make_check(lidar_tab, "Boundary Detection On", boundary_var)
-lidar_switch_button.grid(row=2, column=0, columnspan=2, padx=12, pady=3, sticky=W)
-boundry_detection_switch.grid(row=3, column=0, columnspan=2, padx=12, pady=3, sticky=W)
+lidar_on_button.grid(row=2, column=0, columnspan=2, padx=12, pady=3, sticky=W)
+lidar_off_button.grid(row=3, column=0, columnspan=2, padx=12, pady=3, sticky=W)
+boundry_detection_switch.grid(row=4, column=0, columnspan=2, padx=12, pady=3, sticky=W)
 
 refresh_row = Frame(lidar_tab, bg=BG2)
 refresh_row.grid(row=4, column=0, columnspan=2, padx=12, pady=2, sticky=EW)
@@ -468,6 +473,7 @@ def get_username():
 
 def get_password(): 
     return password_input.get()
+    
 
 def get_objective():
     if robot is not None and detection is not None:
@@ -662,10 +668,19 @@ def on_auto_run():
     if robot is not None:
         get_objective()  
 
+def on_auto_run_stop():
+    if robot is not None:
+        robot.objective = Objective.Stop  
+
 def on_lidar():
     if robot is not None:
         lidar_thread()
-        update_lidar()
+
+def on_lidar_off():
+    global lidar_image
+    if robot is not None:
+        robot.lidar_disable()
+        lidar_image = None
 
 
 connection_button.config(command=on_connect)
@@ -684,7 +699,9 @@ auto_mode_button.config(command=on_auto_mode)
 power_off_mode_button.config(command=on_power_off)
 run_detection_button.config(command=on_run_detection)
 auto_run_button.config(command=on_auto_run)
-lidar_switch_button.config(command=on_lidar)
+auto_run_stop_button.config(command=on_auto_run_stop)
+lidar_on_button.config(command=on_lidar)
+lidar_off_button.config(command=on_lidar_off)
 
 
 # Detection Pipeline
@@ -742,7 +759,8 @@ def robot_connection_setup():
         while robot is None:
             robot = WebRTCConnection()
             await robot.connection_setup(get_connection_method(), get_ip(), get_serial_number(), get_username(), get_password())
-            
+            await asyncio.sleep(1)
+
         while robot is not None:
             if robot.conn.datachannel.pub_sub.channel.readyState != "open":
                 robot = None
@@ -750,15 +768,15 @@ def robot_connection_setup():
 
             robot.status_check()
             await robot.low_battery_action()
-                
+                    
             if detection is not None:
                 if robot.objective == Objective.Track_Hit:
                     await move.movement_response(robot, detection, True, response_action)
-                    
                 elif robot.objective == Objective.Stand_Hit:
                     await move.movement_response(robot, detection, False, response_action)
-        
+                
             await asyncio.sleep(0.1)
+
         
     def async_setup():
         asyncio.run(setup())
@@ -768,11 +786,12 @@ def robot_connection_setup():
 
 def lidar_display():
     global robot, lidar_image
-    plotter = pv.Plotter(off_screen=True)
-    plotter.show(interactive_update=True)
-    while robot is not None:
-        if not robot.lidar_queue == None:
-            points = np.array(robot.lidar_queue["data"]["data"]["points"])
+
+    st = time.time()
+    while robot is not None and robot.lidar_data is not None:
+
+        if (time.time() - st >= 1/get_lidar_refresh_rate()):
+            points = robot.lidar_data
 
             facing = np.array(robot.orientation)
             facing = facing / np.linalg.norm(facing) 
@@ -780,12 +799,14 @@ def lidar_display():
             sensor_offset = 0.3
             origin = np.array(robot.lidar_origin) + facing * sensor_offset
 
-            robot.avoid_vector, lidar_image = go2_lidar.run_with_plot(plotter, points, origin, 0.3, robot.orientation)
+            robot.avoid_vector, lidar_image = go2_lidar.run_with_plot(points, origin, 0.3, robot.orientation)
 
             if not bool(boundary_var):
                 robot.avoid_vector = None
 
-            time.sleep(1/get_lidar_refresh_rate())
+            st = time.time()
+    
+
 
 
 def lidar_thread():
@@ -793,6 +814,9 @@ def lidar_thread():
 
     lidar_thread = threading.Thread(target=lidar_display, daemon=True)
     lidar_thread.start() 
+
+def status_check(value, suffix=""):
+    return f"{value}{suffix}" if value is not None else "N/A"
 
 def update_robot_status():
     global robot
@@ -807,8 +831,7 @@ def update_robot_status():
     npu_temp = utils.npu_temp()
     npu_load = utils.npu_load()
 
-    def status_check(value, suffix=""):
-        return f"{value}{suffix}" if value is not None else "N/A"
+    
     
     robot_battery_label.config(text=f"Robot Battery        : {status_check(robot_battery, "%")}")
     robot_speed_label.config(text=f"Robot Speed          : {status_check(robot_velocity, "m/s")}")
@@ -816,12 +839,12 @@ def update_robot_status():
     robot_motor_temperature_label.config(text=f"Robot Max Motor Temp : {status_check(robot_motor_temperature, "°C")}")
     
     pi_battery_label.config(text=f"Pi Battery           : {status_check(pi_battery)}")
-    cpu_temp_label.config(text=f"CPU Temp             : {status_check(cpu_temp, "°C")}")
-    cpu_load_label.config(text=f"CPU Load             : {status_check(cpu_load, "%")}")
-    npu_temp_label.config(text=f"NPU Temp             : {status_check(npu_temp, "°C")}")
-    npu_load_label.config(text=f"NPU Load             : {status_check(npu_load, "%")}")
+    cpu_temp_label.config(  text=f"CPU Temp             : {status_check(cpu_temp, "°C")}")
+    cpu_load_label.config(  text=f"CPU Load             : {status_check(cpu_load, "%")}")
+    npu_temp_label.config(  text=f"NPU Temp             : {status_check(npu_temp, "°C")}")
+    npu_load_label.config(  text=f"NPU Load             : {status_check(npu_load, "%")}")
 
-    if robot is not None:
+    if robot is not None and robot.conn.datachannel.pub_sub.channel.readyState == "open":
         connection_status_label.config(text="● CONNECTED", fg=SUCCESS)
     else:
         connection_status_label.config(text="● NO CONNECTION", fg=DANGER)
@@ -831,17 +854,14 @@ def update_robot_status():
 def update_detection_status():
     if detection is not None:
         detected = detection.detected
-        detection_confidence = detection.confidence_score
-        distance = detection.min_distance
-        predicted_distance = detection.future_distance
+        detection_confidence = status_check(detection.confidence_score, "%")
+        distance = status_check(detection.min_distance, "cm")
+        predicted_distance = status_check(detection.future_distance, "cm")
 
-    def status_check(value):
-        return value if value is not None else "N/A"
-
-    detection_status_label.config(text=f"Object Detected : {status_check(detected)}")
-    detection_confidence_label.config(text=f"Detected Object Confidence: {status_check(detection_confidence)}")
-    detection_distance_label.config(text=f"Detected Object Distance : {status_check(distance)}")
-    detection_predicted_distance_label.config(text=f"Detected Object Predicted Distance : {status_check(predicted_distance)}")
+    detection_status_label.config(            text=f"Detected                  : {status_check(detected)}")
+    detection_confidence_label.config(        text=f"Object Confidence         : {status_check(detection_confidence)}")
+    detection_distance_label.config(          text=f"Object Distance           : {status_check(distance)}")
+    detection_predicted_distance_label.config(text=f"Object Predicted Distance : {status_check(predicted_distance)}")
 
     window.after(500, update_detection_status)
 
@@ -860,9 +880,12 @@ def input_field_check():
 
 
 def update_video():
+    global lidar_image
+
     window_width  = window.winfo_width()
     window_height = window.winfo_height()
     video_size = (int(window_width * 0.5), int(window_height * 0.5))
+    lidar_size = (int(window_width * 0.25), int(window_height * 0.25))
 
     if detection.display_queue is not None:
         frame = detection.display_queue[:, :, ::-1]
@@ -876,26 +899,23 @@ def update_video():
         video.imgtk = tk_image
         video.configure(image=tk_image)
 
-    window.after(int(1000/30), update_video)
-
-
-def update_lidar():
-    global lidar_image
-    window_width  = window.winfo_width()
-    window_height = window.winfo_height()
-    video_size = (int(window_width * 0.25), int(window_height * 0.25))
-
     if lidar_image is not None:
-        if lidar_image.shape[:2][::-1] != video_size:
-            lidar_image = cv2.resize(lidar_image, video_size, interpolation=cv2.INTER_NEAREST)
+        if lidar_image.shape[:2][::-1] != lidar_size:
+            lidar_image = cv2.resize(lidar_image, lidar_size, interpolation=cv2.INTER_NEAREST)
 
         image = Image.fromarray(lidar_image)
         tk_image = ImageTk.PhotoImage(image=image)
 
         lidar.imgtk = tk_image
         lidar.configure(image=tk_image)
+    else:
+        lidar.configure(image="", text="No Lidar")
 
-    window.after(int(1000/get_lidar_refresh_rate()), update_lidar)
+    
+
+    window.after(int(1000/30), update_video)
+
+
 
 input_field_check()
 update_video()

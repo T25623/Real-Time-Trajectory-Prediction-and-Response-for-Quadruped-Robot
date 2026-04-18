@@ -7,7 +7,7 @@ import queue
 import numpy as np
 import framework.utils.utils as utils
 import framework.robot.go2.movement as move
-
+import time
 
 class LidarDecoder(Enum):
     Native = 0
@@ -16,15 +16,14 @@ class LidarDecoder(Enum):
 class Objective(Enum):
     Track_Hit = 0
     Stand_Hit = 1
-    Move_Dodge = 2
-    Stand_Dodge = 3
-    Seek = 5
+    Stand_Dodge = 2
+    Stop = 3
 
 class WebRTCConnection:
     def __init__(self):
         self.conn = None
 
-        self.lidar_queue = None
+        self.lidar_data = None
         self.lidar_origin = None
 
         self.state_of_charge = None
@@ -64,7 +63,7 @@ class WebRTCConnection:
         else:
             lidar_on = "off"
 
-        self.conn.datachannel.pub_sub.publish_without_callback("rt/utlidar/switch", "on")
+        self.conn.datachannel.pub_sub.publish_without_callback("rt/utlidar/switch", lidar_on)
 
     def lidar_data_type(self, decoder_type=0):
         if decoder_type == 0:
@@ -81,6 +80,13 @@ class WebRTCConnection:
         self.conn.datachannel.pub_sub.subscribe(
            "rt/utlidar/voxel_map_compressed", self.lidar_callback
         )
+
+    def lidar_disable(self):
+        self.conn.datachannel.pub_sub.unsubscribe(
+           "rt/utlidar/voxel_map_compressed"
+        )
+        self.lidar_sensor_activate(False)
+        self.lidar_data = None
     
     def state_call(self):
         self.conn.datachannel.pub_sub.subscribe(
@@ -105,8 +111,8 @@ class WebRTCConnection:
         # utils.sportmode_state_print(message)
 
     def lidar_callback(self, message):
-        self.lidar_queue = message 
-        self.lidar_origin = utils.lidar_origin_calculation(message)
+        self.lidar_data = np.array(message["data"]["data"]["points"])
+        self.lidar_origin = utils.lidar_origin_calculation(message["data"])
 
 
     def status_check(self):

@@ -5,8 +5,8 @@ After=multi-user.target
 [Service]
 Type=simple
 User=go2
-WorkingDirectory=/home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot
-ExecStart=/usr/bin/python3 /home/go2/FYP/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/start_script.py
+WorkingDirectory=/home/go2/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot
+ExecStart=/usr/bin/python3 /home/go2/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/startup/start_script.py
 Restart=always
 
 [Install]
