@@ -2,6 +2,8 @@ import framework.utils.utils as utils
 import asyncio
 from go2_webrtc_driver.constants import RTC_TOPIC, SPORT_CMD
 import time
+from framework.utils.utils import Objective
+
 
 async def go2_movement(conn, x, y, z):
     # await enable_movement(conn)
@@ -161,11 +163,11 @@ async def avoid_response(robot, detection, track=True):
                 await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
 
 
+pitch = 0
 st = time.time()
 async def movement_response(robot, detection_time, no_detection_time, detected, future_distance, future_center_x, future_center_y, track, response_action):
-    global st
-    pitch = 0
-    if robot.avoid_vector is not None:
+    global st, pitch
+    if robot.avoid_vector is not None and robot.orientation is not None:
         await avoid_obstacle(robot)
         
     elif (time.time() - no_detection_time) >= 5 and not detected and (time.time() - st) >= 3 and track == 0:
@@ -173,14 +175,13 @@ async def movement_response(robot, detection_time, no_detection_time, detected, 
         await go2_movement(robot.conn, 0, 0, 2)
             
     elif detected:
-        if future_distance >= -0.1 and future_distance <= 0.3:
-            if track == 0:
+        if future_distance is not None and future_distance >= -0.1 and future_distance <= 0.3:
+            if track == Objective.Track_Hit:
                 await asyncio.sleep(1.5)
-                        
             await perform_action(robot.conn, response_action)
             pitch = 0
                 
-        elif track == 0:
+        elif track == Objective.Track_Hit and future_distance is not None and future_center_x is not None and future_center_y is not None:
             forward = calculate_movement(future_distance, 0.1, 0.2, robot.movement_speed)
             rotate = calculate_rotation(future_center_x, 0.1, robot.rotate_speed)
                    

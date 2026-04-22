@@ -3,6 +3,18 @@ from hailo_platform import Device
 import subprocess
 import os
 import psutil
+from enum import Enum
+
+
+class LidarDecoder(Enum):
+    Native = 0
+    Libvoxel = 1
+
+class Objective(Enum):
+    Track_Hit = 0
+    Stand_Hit = 1
+    Stand_Dodge = 2
+    Stop = 3
 
 def parse_response(response):
     code = response['data']['header']['status']['code']

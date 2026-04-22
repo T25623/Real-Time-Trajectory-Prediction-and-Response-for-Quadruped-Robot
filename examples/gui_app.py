@@ -1,6 +1,6 @@
 from framework.robot.go2.setup import WebRTCConnection
 import framework.robot.go2.setup as go2
-from framework.robot.go2.setup import Objective
+from framework.utils.utils import Objective
 import framework.robot.go2.lidar as go2_lidar
 from framework.detection.detection import DetectionPipeline
 import asyncio
@@ -166,7 +166,14 @@ separator(reponse_and_motion_container).pack(fill=X, padx=8, pady=(0,6))
 
 objectives = ("Move & Hit", "Stand & Hit", "Move & Dodge", "Stand & Dodge")
 objectives_combobox = Combobox(reponse_and_motion_container, values=objectives, state="readonly", font=FONT_LABEL)
+objectives_combobox.set(objectives[0])
 objectives_combobox.pack(fill=X, padx=12, pady=(0,8))
+
+actions = ("FrontJump", "FrontPounce", "Hello")
+actions_combobox = Combobox(reponse_and_motion_container, values=actions, state="readonly", font=FONT_LABEL)
+actions_combobox.set(actions[2])
+actions_combobox.pack(fill=X, padx=12, pady=(0,8))
+
 
 move_speed_row = Frame(reponse_and_motion_container, bg=BG2)
 move_speed_row.pack(fill=X, padx=12, pady=2)
@@ -491,9 +498,13 @@ def get_objective():
         elif not hit and not track:
             robot.objective = Objective.Stand_Dodge
 
-        
-        
+def get_action():
+    if robot is not None and detection is not None:
+        return actions_combobox.get()
+    else:
+        return "Hello"
 
+        
 def get_move_speed():
     if robot is not None:
         robot.movement_speed = move_speed_slider.get()
@@ -770,18 +781,11 @@ def robot_connection_setup():
             robot.status_check()
             await robot.low_battery_action()
                     
-            if detection is not None:
-                no_detection_time = detection.no_detection_time
-                detection_time = detection.detection_time
-                detected = detection.detected
-                future_distance = detection.future_distance
-                future_center_x = detection.future_center_x
-                future_center_y = detection.future_center_y
+            if detection is not None and robot.objective != Objective.Stop:
+                    state = detection.snapshot()
+ 
+                    await move.movement_response(robot,state["detection_time"], state["no_detection_time"], state["detected"], state["future_distance"], state["future_center_x"], state["future_center_y"], Objective.Track_Hit, get_action())
 
-                if None not in (detection_time, future_distance, future_center_x, future_center_y):
-                    await move.movement_response(robot, detection_time, no_detection_time, detected, future_distance, future_center_x, future_center_y, Objective.Track_Hit, response_action)
-
-                
             await asyncio.sleep(0.1)
 
         
@@ -808,7 +812,7 @@ def lidar_display():
 
             robot.avoid_vector, lidar_image = go2_lidar.run_with_plot(points, origin, 0.3, robot.orientation)
 
-            if not bool(boundary_var):
+            if not bool(boundary_var.get()):
                 robot.avoid_vector = None
 
             st = time.time()
@@ -851,8 +855,11 @@ def update_robot_status():
     npu_temp_label.config(  text=f"NPU Temp             : {status_check(npu_temp, "°C")}")
     npu_load_label.config(  text=f"NPU Load             : {status_check(npu_load, "%")}")
 
-    if robot is not None and robot.conn.datachannel.pub_sub.channel.readyState == "open":
-        connection_status_label.config(text="● CONNECTED", fg=SUCCESS)
+    if robot is not None:
+        if robot.conn.datachannel.pub_sub.channel.readyState == "open":
+            connection_status_label.config(text="● CONNECTED", fg=SUCCESS)
+        else:
+            connection_status_label.config(text="● NO CONNECTION", fg=DANGER)
     else:
         connection_status_label.config(text="● NO CONNECTION", fg=DANGER)
 

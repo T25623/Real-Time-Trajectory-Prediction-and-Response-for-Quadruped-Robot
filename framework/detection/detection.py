@@ -68,14 +68,32 @@ class DetectionPipeline:
         self.kalman_filter = kalman_filter
         self.predict_steps = predict_steps
 
-        self.real_object_height = 0
-        self.distance_scale_factor = 0
+        self.real_object_height = 20
+        self.distance_scale_factor = 15
 
         self.running = False
         self._stop_event = threading.Event()
+        self._state_lock = threading.Lock()
 
         self.no_detection_time = time.time()
         self.detection_time = 0
+
+
+
+    def snapshot(self):
+        with self._state_lock:
+            detected = self.detected
+            return {
+                "detected":         detected,
+                "future_distance":  self.future_distance  if detected else None,
+                "future_center_x":  self.future_center_x  if detected else None,
+                "future_center_y":  self.future_center_y  if detected else None,
+                "no_detection_time": self.no_detection_time,
+                "detection_time":   self.detection_time,
+                "min_distance":     self.min_distance      if detected else None,
+                "confidence_score": self.confidence_score  if detected else None,
+            }
+
 
     def setup_camera(self, robot):
         
@@ -97,9 +115,9 @@ class DetectionPipeline:
     def start_threads(self, images, cap, width, height):
         threading.Thread(target=preprocess, daemon=True, args=(images, cap, self.framerate, self.batch_size, self.input_queue, width, height)).start()
         threading.Thread(target=infer, daemon=True, args=(self.hailo_inference, self.input_queue, self.output_queue)).start()
-        threading.Thread(target=self._display_loop, daemon=True).start()
+        threading.Thread(target=self.display_loop, daemon=True).start()
 
-    def _display_loop(self):
+    def display_loop(self):
         if not self.headless:
             cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
             while True:
@@ -126,23 +144,23 @@ class DetectionPipeline:
         if len(bbox) > 0:
             # Extract coordinates of bounding box 
             y0, x0, y1, x1 = bbox[0]
-            self.confidence_score = round(float(detection_scores[0]), 2)
+            confidence_score = round(float(detection_scores[0]), 2)
 
             # Calculate center of bounding box
-            self.center_x = ((y0 + y1) / 2) / self.resolution[0]
-            self.center_y = ((x0 + x1) / 2) / self.resolution[1]
-            px = int(self.center_x * self.resolution[0])
-            py = int(self.center_y * self.resolution[1])
+            center_x = ((y0 + y1) / 2) / self.resolution[0]
+            center_y = ((x0 + x1) / 2) / self.resolution[1]
+            px = int(center_x * self.resolution[0])
+            py = int(center_y * self.resolution[1])
             self.trail.append((px, py))
             
             # Calculate distance to detected object
-            self.min_distance = self.estimate_distance(x0, y0, x1, y1)
+            min_distance = self.estimate_distance(x0, y0, x1, y1)
 
             # Create array for kalman filter of center x, center y, and distance 
             z = np.array([
-                [self.center_x],
-                [self.center_y],
-                [self.min_distance]
+                [center_x],
+                [center_y],
+                [min_distance]
             ])
             
 
@@ -151,23 +169,34 @@ class DetectionPipeline:
             self.kalman_filter.predict(u)
             state = self.kalman_filter.update(z)
 
-            self.predicted_center_x = state[0,0]
-            self.predicted_center_y = state[1,0]
-            self.predicted_distance = state[2,0]
-            self.detected = True
-            self.no_detection_time = 0
-            self.detection_time = time.time()
+            with self._state_lock:
+                self.confidence_score = confidence_score
+                self.center_x = center_x
+                self.center_y = center_y
+                self.min_distance = min_distance
+                self.predicted_center_x = state[0, 0]
+                self.predicted_center_y = state[1, 0]
+                self.predicted_distance = state[2, 0]
+                self.no_detection_time = 0
+                self.detection_time = time.time()
+                self.detected = True
 
         else:
-            self.detected = False
-            self.confidence_score = None
-            self.center_x = None
-            self.center_y = None
-            self.min_distance = None
-            self.predicted_center_x = None
-            self.predicted_center_y = None
-            self.predicted_distance = None
-            self.detection_time = 0
+            with self._state_lock:
+                self.detected = False
+                self.confidence_score = None
+                self.center_x = None
+                self.center_y = None
+                self.min_distance = None
+                self.predicted_center_x = None
+                self.predicted_center_y = None
+                self.predicted_distance = None
+                self.future_distance = None
+                self.future_center_x = None
+                self.future_center_y = None
+                self.detection_time = 0
+
+
 
     def draw_trail(self, frame, trail_list):
         total = len(trail_list)
@@ -277,11 +306,17 @@ class DetectionPipeline:
                 if self.kalman_filter is not None and self.detected:
 
                     future_positions = self.kalman_filter.predict_n_steps(self.predict_steps)
-                    self.future_center_x = future_positions[-1][0]
-                    self.future_center_y = future_positions[-1][1]
+                    future_center_x = future_positions[-1][0]
+                    future_center_y = future_positions[-1][1]
                     
                     self.predicted_distances.append(future_positions[-1][2])
-                    self.future_distance = round(min(self.predicted_distances),2)
+                    future_distance = round(min(self.predicted_distances),2)
+
+                    with self._state_lock:
+                        self.future_center_x = future_center_x
+                        self.future_center_y = future_center_y
+                        self.future_distance = future_distance
+
                     for px, py, pz in future_positions:
                         px = int(px * self.resolution[0])
                         py = int(py * self.resolution[1])
@@ -290,9 +325,10 @@ class DetectionPipeline:
                         cv2.circle(frame, (px, py), radius, (255,0,255), -1)
                 
                 elif not self.detected:
-                    self.future_center_x = None
-                    self.future_center_y = None
-                    self.future_distance = None
+                    with self._state_lock:
+                        self.future_center_x = None
+                        self.future_center_y = None
+                        self.future_distance = None
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 

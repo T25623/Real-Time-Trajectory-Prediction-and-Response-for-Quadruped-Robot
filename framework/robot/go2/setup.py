@@ -2,23 +2,13 @@ from unitree_webrtc_connect.webrtc_driver import UnitreeWebRTCConnection, WebRTC
 from unitree_webrtc_connect.constants import RTC_TOPIC, SPORT_CMD 
 import asyncio
 import re
-from enum import Enum
 import queue
 import numpy as np
 import framework.utils.utils as utils
 import framework.robot.go2.movement as move
 import time
 from aiortc import MediaStreamTrack
-
-class LidarDecoder(Enum):
-    Native = 0
-    Libvoxel = 1
-
-class Objective(Enum):
-    Track_Hit = 0
-    Stand_Hit = 1
-    Stand_Dodge = 2
-    Stop = 3
+from framework.utils.utils import Objective
 
 class WebRTCConnection:
     def __init__(self):
@@ -34,13 +24,13 @@ class WebRTCConnection:
         self.gyroscope = None
         self.temperature = None
         
-        self.movement_speed = None
-        self.rotate_speed = None
-        self.pitch_speed = None
+        self.movement_speed = 1
+        self.rotate_speed = 2
+        self.pitch_speed = 0.5
 
         self.avoid_vector = None
 
-        self.objective = None
+        self.objective = Objective.Stop
 
         self.camera = None
     

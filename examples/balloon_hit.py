@@ -1,7 +1,7 @@
 from framework.robot.go2.setup import WebRTCConnection
 import framework.robot.go2.setup as go2
-import framework.robot.go2.lidar as dl
-from framework.robot.go2.setup import Objective
+import framework.robot.go2.lidar as go2_lidar
+from framework.utils.utils import Objective
 from framework.detection.detection import DetectionPipeline
 import asyncio
 import framework.robot.go2.movement as move
@@ -54,16 +54,8 @@ async def robot_connection_setup():
         await robot.low_battery_action()
 
         if detection is not None:
-            no_detection_time = detection.no_detection_time
-            detection_time = detection.detection_time
-            detected = detection.detected
-            future_distance = detection.future_distance
-            future_center_x = detection.future_center_x
-            future_center_y = detection.future_center_y
-
-            if None not in (detection_time, future_distance, future_center_x, future_center_y):
-                await move.movement_response(robot, detection_time, no_detection_time, detected, future_distance, future_center_x, future_center_y, Objective.Track_Hit, response_action)
-  
+            state = detection.snapshot()
+            await move.movement_response(robot, state["detection_time"], state["no_detection_time"], state["detected"], state["future_distance"], state["future_center_x"], state["future_center_y"], Objective.Track_Hit, response_action)
         await asyncio.sleep(0.1)
 
     
@@ -85,9 +77,6 @@ def lidar_display():
             origin = np.array(robot.lidar_origin) + facing * sensor_offset
 
             robot.avoid_vector = go2_lidar.run(points, origin, 0.3, robot.orientation)
-
-            if not bool(boundary_var):
-                robot.avoid_vector = None
 
             st = time.time()
     
