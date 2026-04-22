@@ -1,82 +1,104 @@
 from framework.robot.go2.setup import WebRTCConnection
 import framework.robot.go2.setup as go2
 import framework.robot.go2.lidar as dl
+from framework.robot.go2.setup import Objective
 from framework.detection.detection import DetectionPipeline
 import asyncio
 import framework.robot.go2.movement as move
 import threading
 import numpy as np
-import pyvista as pv
-from framework.utils.utils import rotate_vector, calculate_facing_correction
+import time 
 
-hef_path = "config/balloonv8s.hef"
-config_path = "config/config.json"
-labels_path = "config/balloon.txt"
+hef_path = "config/models/balloonv8s.hef"
+config_path = "config/json/balloon.json"
+labels_path = "config/labels/balloon.txt"
 
-detection = DetectionPipeline(hef_path, config_path, labels_path)
-detection.FPS_counter = True
+detection = None
+ms_per_frame = None
+robot = None
+robot_manual_control = False
+lidar_image = None
 
-message = None
-dog = None
-vector = None 
+def start_detection():
+    global detection
 
-def lidar_visuals():
-    global message, dog, vector, slider_x, slider_y
-    plotter = pv.Plotter(off_screen=False)
-    plotter.show(interactive_update=True)
-    while True:
-        if not message == None:
-            points = np.array(message["data"]["data"]["points"])
- 
-            adjusted_origin = (
-                dog.lidar_origin[0],
-                dog.lidar_origin[1],
-                dog.lidar_origin[2],  
-            )
+    detection = DetectionPipeline(hef_path, config_path, labels_path, headless=True, resolution=(1280, 720), framerate=60)
 
-            vector = dl.run(plotter, points, adjusted_origin, 0.3, dog.orientation)
+    detection.running = True
+    detection_thread = threading.Thread(target=detection.run, args=(robot,), daemon=True)
 
- 
+    detection_thread.start()
 
-async def go2():
-    global message, dog, vector
-    dog = WebRTCConnection()
-    await dog.connection_setup()
-    dog.lidar_setup(True, 0)
 
-    print("connected")
-    pitch = 0
-    while True:
-        dog.state_call()
-        message = dog.lidar_data
-        
-        if vector is not None:
 
-            facing_correction = calculate_facing_correction(dog.orientation)
+# Robot Connection
+async def robot_connection_setup():
+    global robot
+    response_action = "Hello"
+    while robot is None:
+        robot = WebRTCConnection()
+        await robot.connection_setup("LocalAP" )
+        await asyncio.sleep(1)
     
-            new_vector = rotate_vector(vector, facing_correction)
-            await move.go2_movement(dog.conn, (new_vector[1]*0.1), (-new_vector[0]*0.1), 0)
-        elif detection.detected:
-            if detection.future_distance >= -0.1 and detection.future_distance <= 0.3: 
-                await asyncio.sleep(1.5)
-                print("now")
-                resp = await move.perform_action(dog.conn, "Hello")
-                print(resp)
-                pitch = 0
-            else:
-                forward = move.calculate_movement(detection.future_distance, 0.1, 0.2, 0.25)
-                rotate = move.calculate_rotation(detection.future_center_x, 0.1, 2)
-                
-                pitch = move.calculate_pitch(detection.future_center_y, 0.1, 0.25, pitch) 
-                await move.move_pitch(dog.conn, forward, 0, rotate, 0, pitch, 0)
-        
-        await asyncio.sleep(0.05)
-       
-detection_thread = threading.Thread(target=detection.run, daemon=True)
-detection_thread.start()
+    lidar_thread()
+    robot.movement_speed = 0.2
+    robot.rotate_speed = 2
+    robot.pitch_speed = 0.5
+
+    while robot is not None:
+        if robot.conn.datachannel.pub_sub.channel.readyState != "open":
+            robot = None
+            break
+
+        robot.status_check()
+        await robot.low_battery_action()
+
+        if detection is not None:
+            no_detection_time = detection.no_detection_time
+            detection_time = detection.detection_time
+            detected = detection.detected
+            future_distance = detection.future_distance
+            future_center_x = detection.future_center_x
+            future_center_y = detection.future_center_y
+
+            if None not in (detection_time, future_distance, future_center_x, future_center_y):
+                await move.movement_response(robot, detection_time, no_detection_time, detected, future_distance, future_center_x, future_center_y, Objective.Track_Hit, response_action)
+  
+        await asyncio.sleep(0.1)
+
+    
 
 
-lidar_thread = threading.Thread(target=lidar_visuals, daemon=True)
-lidar_thread.start()
+def lidar_display():
+    global robot
 
-asyncio.run(go2())
+    st = time.time()
+    while robot is not None and robot.lidar_data is not None:
+
+        if (time.time() - st >= 0.2):
+            points = robot.lidar_data
+
+            facing = np.array(robot.orientation)
+            facing = facing / np.linalg.norm(facing) 
+
+            sensor_offset = 0.3
+            origin = np.array(robot.lidar_origin) + facing * sensor_offset
+
+            robot.avoid_vector = go2_lidar.run(points, origin, 0.3, robot.orientation)
+
+            if not bool(boundary_var):
+                robot.avoid_vector = None
+
+            st = time.time()
+    
+
+def lidar_thread():
+    if robot is not None:
+        robot.lidar_setup(True, 0)
+
+        lidar_thread = threading.Thread(target=lidar_display, daemon=True)
+        lidar_thread.start() 
+
+
+start_detection()
+asyncio.run(robot_connection_setup())

@@ -58,6 +58,12 @@ class WebRTCConnection:
 
         await self.conn.connect()
         await self.conn.datachannel.disableTrafficSaving(True)
+
+        # response = await self.conn.datachannel.pub_sub.publish_request_new(
+        #     RTC_TOPIC["MOTION_SWITCHER"], 
+        #     {"api_id": SPORT_CMD["SpeedLevel"]}
+        # )
+        # print(response)
         # await motion_switcher(self.conn)
 
 

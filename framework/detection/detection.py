@@ -75,6 +75,7 @@ class DetectionPipeline:
         self._stop_event = threading.Event()
 
         self.no_detection_time = time.time()
+        self.detection_time = 0
 
     def setup_camera(self, robot):
         
@@ -143,6 +144,7 @@ class DetectionPipeline:
                 [self.center_y],
                 [self.min_distance]
             ])
+            
 
             u = np.zeros((2,1))
             # Predict next position of detected object
@@ -154,6 +156,7 @@ class DetectionPipeline:
             self.predicted_distance = state[2,0]
             self.detected = True
             self.no_detection_time = 0
+            self.detection_time = time.time()
 
         else:
             self.detected = False
@@ -164,6 +167,7 @@ class DetectionPipeline:
             self.predicted_center_x = None
             self.predicted_center_y = None
             self.predicted_distance = None
+            self.detection_time = 0
 
     def draw_trail(self, frame, trail_list):
         total = len(trail_list)

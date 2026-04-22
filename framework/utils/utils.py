@@ -52,7 +52,7 @@ def valid_ip(ip):
     else:
         print("Invalid IP")
 
-def calculate_facing_correction(orientation):
+def angle_between_vectors(orientation):
     target = np.array([0, 1, 0])
     cross = np.cross(orientation, target)
     dot = np.dot(orientation, target)
@@ -61,14 +61,11 @@ def calculate_facing_correction(orientation):
     return sign * angle     
 
 def rotate_vector(orientation, angle):
-    cos_a = np.cos(angle)
-    sin_a = np.sin(angle)
-    R = np.array([
-        [cos_a, -sin_a, 0],
-        [sin_a, cos_a, 0],
-        [0, 0, 1]
-    ])
-    return R @ orientation
+    sin_angle = np.sin(angle)
+    cos_angle = np.cos(angle)
+    x = cos_angle * orientation[0] - sin_angle * orientation[1]
+    y = sin_angle * orientation[0] + cos_angle * orientation[1]
+    return np.array([x, y, orientation[2]])
 
 target = Device()
 

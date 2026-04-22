@@ -57,6 +57,8 @@ async def perform_action(conn, action):
         RTC_TOPIC["SPORT_MOD"],
         {"api_id": SPORT_CMD[action], "parameter": {"data": True}}
     )
+    response = await go2_movement(conn, 0, 0, 0)
+    
     return response
 
 async def move_pitch(conn, move_x, move_y, move_z, pitch_x, pitch_y, pitch_z):
@@ -140,7 +142,7 @@ def calculate_pitch(offset_ratio, deadzone, scale_factor, current_pitch, max_pit
     return pitch_position
 
 async def avoid_obstacle(robot):
-    facing_correction = utils.calculate_facing_correction(robot.orientation)
+    facing_correction = utils.angle_between_vectors(robot.orientation)
     vector = utils.rotate_vector(robot.avoid_vector, facing_correction)
             
     await go2_movement(robot.conn, (vector[1]*0.1), (-vector[0]*0.1), 0)
@@ -160,29 +162,29 @@ async def avoid_response(robot, detection, track=True):
 
 
 st = time.time()
-async def movement_response(robot, detection, track, response_action):
+async def movement_response(robot, detection_time, no_detection_time, detected, future_distance, future_center_x, future_center_y, track, response_action):
     global st
     pitch = 0
     if robot.avoid_vector is not None:
         await avoid_obstacle(robot)
         
-    elif (time.time() - detection.no_detection_time) >= 5 and not detection.detected and (time.time() - st) >= 3:
+    elif (time.time() - no_detection_time) >= 5 and not detected and (time.time() - st) >= 3 and track == 0:
         st = time.time()
         await go2_movement(robot.conn, 0, 0, 2)
             
-    elif detection.detected:
-        if detection.future_distance >= -0.1 and detection.future_distance <= 0.3:
-            if track:
+    elif detected:
+        if future_distance >= -0.1 and future_distance <= 0.3:
+            if track == 0:
                 await asyncio.sleep(1.5)
                         
             await perform_action(robot.conn, response_action)
             pitch = 0
                 
-        elif track:
-            forward = calculate_movement(detection.future_distance, 0.1, 0.2, robot.movement_speed)
-            rotate = calculate_rotation(detection.future_center_x, 0.1, robot.rotate_speed)
+        elif track == 0:
+            forward = calculate_movement(future_distance, 0.1, 0.2, robot.movement_speed)
+            rotate = calculate_rotation(future_center_x, 0.1, robot.rotate_speed)
                    
-            pitch = calculate_pitch(detection.future_center_y, 0.1, robot.pitch_speed, pitch)
+            pitch = calculate_pitch(future_center_y, 0.1, robot.pitch_speed, pitch)
             await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
     
     

@@ -6,7 +6,8 @@ After=multi-user.target
 Type=simple
 User=go2
 WorkingDirectory=/home/go2/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot
-ExecStart=/usr/bin/python3 /home/go2/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/startup/start_script.py
+Environment=PYTHONPATH=/home/go2/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot
+ExecStart=/home/go2/Real-Time-Trajectory-Prediction-and-Response-for-Quadruped-Robot/hailo-apps/venv_hailo_apps/bin/python -m startup.start_script
 Restart=always
 
 [Install]

@@ -440,7 +440,7 @@ lidar_off_button.grid(row=3, column=0, columnspan=2, padx=12, pady=3, sticky=W)
 boundry_detection_switch.grid(row=4, column=0, columnspan=2, padx=12, pady=3, sticky=W)
 
 refresh_row = Frame(lidar_tab, bg=BG2)
-refresh_row.grid(row=4, column=0, columnspan=2, padx=12, pady=2, sticky=EW)
+refresh_row.grid(row=5, column=0, columnspan=2, padx=12, pady=2, sticky=EW)
 lidar_tab.grid_columnconfigure(0, weight=1)
 dim_label(refresh_row, "Refresh Rate", width=14).pack(side=LEFT, anchor=W)
 lidar_refresh_rate_slider = make_scale(refresh_row, from_=1, to=10)
@@ -448,7 +448,7 @@ lidar_refresh_rate_slider.set(1)
 lidar_refresh_rate_slider.pack(side=LEFT, fill=X, expand=True)
 
 lidar_panel = panel(lidar_tab)
-lidar_panel.grid(row=5, column=0, columnspan=2, padx=8, pady=(4,6), sticky=EW)
+lidar_panel.grid(row=6, column=0, columnspan=2, padx=8, pady=(4,6), sticky=EW)
 lidar = Label(lidar_panel, bg="#000000", text="No Lidar", font=("Courier", 12), fg=FG_DIM)
 lidar.pack(padx=2, pady=2)
 
@@ -481,7 +481,7 @@ def get_objective():
         
         track = True if "Move" in objective.split("&")[0] else False
         hit = True if "Hit" in objective.split("&")[1] else False
-
+        
         if hit and track:
             robot.objective = Objective.Track_Hit
         elif hit and not track:
@@ -771,10 +771,16 @@ def robot_connection_setup():
             await robot.low_battery_action()
                     
             if detection is not None:
-                if robot.objective == Objective.Track_Hit:
-                    await move.movement_response(robot, detection, True, response_action)
-                elif robot.objective == Objective.Stand_Hit:
-                    await move.movement_response(robot, detection, False, response_action)
+                no_detection_time = detection.no_detection_time
+                detection_time = detection.detection_time
+                detected = detection.detected
+                future_distance = detection.future_distance
+                future_center_x = detection.future_center_x
+                future_center_y = detection.future_center_y
+
+                if None not in (detection_time, future_distance, future_center_x, future_center_y):
+                    await move.movement_response(robot, detection_time, no_detection_time, detected, future_distance, future_center_x, future_center_y, Objective.Track_Hit, response_action)
+
                 
             await asyncio.sleep(0.1)
 
@@ -856,8 +862,8 @@ def update_detection_status():
     if detection is not None:
         detected = detection.detected
         detection_confidence = status_check(detection.confidence_score, "%")
-        distance = status_check(detection.min_distance, "cm")
-        predicted_distance = status_check(detection.future_distance, "cm")
+        distance = status_check(detection.min_distance, "m")
+        predicted_distance = status_check(detection.future_distance, "m")
 
     detection_status_label.config(            text=f"Detected                  : {status_check(detected)}")
     detection_confidence_label.config(        text=f"Object Confidence         : {status_check(detection_confidence)}")
