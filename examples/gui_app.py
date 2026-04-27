@@ -150,9 +150,8 @@ pi_battery_label = info_label(robot_status_container, "Pi Battery    : N/A")
 cpu_temp_label = info_label(robot_status_container, "CPU Temp      : N/A")
 cpu_load_label = info_label(robot_status_container, "CPU Load      : N/A")
 npu_temp_label = info_label(robot_status_container, "NPU Temp      : N/A")
-npu_load_label = info_label(robot_status_container, "NPU Load      : N/A")
 
-for lbl in (robot_battery_label, robot_speed_label, robot_temp_label, robot_motor_temperature_label, pi_label, pi_separator, pi_battery_label, cpu_temp_label, cpu_load_label, npu_temp_label, npu_load_label):
+for lbl in (robot_battery_label, robot_speed_label, robot_temp_label, robot_motor_temperature_label, pi_label, pi_separator, pi_battery_label, cpu_temp_label, cpu_load_label, npu_temp_label):
     lbl.pack(fill=X, padx=12, pady=1)
 
 Frame(robot_status_container, bg=BG2, height=8).pack()
@@ -164,28 +163,28 @@ reponse_and_motion_container.grid(column=0, row=1, padx=0, pady=(0,6), sticky=EW
 section_label(reponse_and_motion_container, "Response & Motion").pack(fill=X, padx=8, pady=(8,6))
 separator(reponse_and_motion_container).pack(fill=X, padx=8, pady=(0,6))
 
-objectives = ("Move & Hit", "Stand & Hit", "Move & Dodge", "Stand & Dodge")
+objectives = ("Move & Hit", "Stand & Hit", "Stand & Dodge")
 objectives_combobox = Combobox(reponse_and_motion_container, values=objectives, state="readonly", font=FONT_LABEL)
 objectives_combobox.set(objectives[0])
 objectives_combobox.pack(fill=X, padx=12, pady=(0,8))
 
-actions = ("FrontJump", "FrontPounce", "Hello")
+actions = ("FrontPounce", "Hello")
 actions_combobox = Combobox(reponse_and_motion_container, values=actions, state="readonly", font=FONT_LABEL)
-actions_combobox.set(actions[2])
+actions_combobox.set(actions[1])
 actions_combobox.pack(fill=X, padx=12, pady=(0,8))
 
 
 move_speed_row = Frame(reponse_and_motion_container, bg=BG2)
 move_speed_row.pack(fill=X, padx=12, pady=2)
 dim_label(move_speed_row, "Movement Speed", width=14).pack(side=LEFT, anchor=W)
-move_speed_slider = make_scale(move_speed_row, from_=0.0, to=50.0, resolution=0.1)
+move_speed_slider = make_scale(move_speed_row, from_=0.0, to=3.0, resolution=0.1)
 move_speed_slider.pack(side=LEFT, fill=X, expand=True)
-move_speed_slider.set(0.25)
+move_speed_slider.set(0.4)
 
 rotate_speed_row = Frame(reponse_and_motion_container, bg=BG2)
 rotate_speed_row.pack(fill=X, padx=12, pady=2)
 dim_label(rotate_speed_row, "Rotate Speed", width=14).pack(side=LEFT, anchor=W)
-rotate_speed_slider = make_scale(rotate_speed_row, from_=0.0, to=50.0, resolution=0.1)
+rotate_speed_slider = make_scale(rotate_speed_row, from_=0.0, to=10.0, resolution=0.1)
 rotate_speed_slider.pack(side=LEFT, fill=X, expand=True)
 rotate_speed_slider.set(2)
 
@@ -349,13 +348,11 @@ tabs = Notebook(tab_container)
 tabs.pack(fill=BOTH, expand=True)
 
 setup_tab = Frame(tabs, bg=BG2)
-tabs.add(setup_tab, text="  Robot Setup  ")
+tabs.add(setup_tab, text="  Detection Setup ")
 
 lidar_tab = Frame(tabs, bg=BG2)
-tabs.add(lidar_tab, text="  Lidar  ")
+tabs.add(lidar_tab, text="  Lidar ")
 
-log_tab = Frame(tabs, bg=BG2)
-tabs.add(log_tab, text="  Error Log  ")
 
 # Setup Tab
 def tab_row(parent, row, label_text, widget):
@@ -370,9 +367,9 @@ separator(setup_tab).grid(row=1, column=0, columnspan=2, padx=8, pady=(0,4), sti
 camera_source_combobox = Combobox(setup_tab, values=("rpi","usb"), state="readonly", font=FONT_LABEL)
 camera_source_combobox.set("rpi")
 resolution_combobox = Combobox(setup_tab, values=("(1920x1080)","(1280x720)","(640x360)","(320x180)"), state="readonly", font=FONT_LABEL)
-resolution_combobox.set("(640x360)")
+resolution_combobox.set("(1280x720)")
 frame_rate_input = make_entry(setup_tab, width=10)
-frame_rate_input.insert(0, "120")
+frame_rate_input.insert(0, "60")
 run_detection_button = make_button(setup_tab, "Run Detection", width=22)
 
 tab_row(setup_tab, 2, "Camera Source", camera_source_combobox)
@@ -461,9 +458,7 @@ lidar.pack(padx=2, pady=2)
 
 Frame(lidar_tab, bg=BG2, height=10).grid(row=5, column=0)
 
-# Log Tab
-log_text = Text(log_tab, bg=BG3, fg=FG, font=MONO, relief="flat", bd=0, state="disabled", insertbackground=ACCENT)
-log_text.pack(fill=BOTH, expand=True, padx=8, pady=8)
+
 
 # Getters
 def get_connection_method(): 
@@ -488,13 +483,11 @@ def get_objective():
         
         track = True if "Move" in objective.split("&")[0] else False
         hit = True if "Hit" in objective.split("&")[1] else False
-        
+
         if hit and track:
             robot.objective = Objective.Track_Hit
         elif hit and not track:
             robot.objective = Objective.Stand_Hit
-        elif not hit and track:
-            robot.objective = Objective.Move_Dodge
         elif not hit and not track:
             robot.objective = Objective.Stand_Dodge
 
@@ -738,7 +731,7 @@ def start_detection():
         detection_thread = None
         detection = None
 
-    detection = DetectionPipeline(hef_path, config_path, labels_path, headless=True, resolution=(1280, 720), framerate=60)
+    detection = DetectionPipeline(hef_path, config_path, labels_path, headless=True)
     ms_per_frame = ms_per_frame = int(1000 / detection.framerate)
     
     get_camera_source()
@@ -780,12 +773,16 @@ def robot_connection_setup():
 
             robot.status_check()
             await robot.low_battery_action()
+            await robot.high_temp_action()
                     
-            if detection is not None and robot.objective != Objective.Stop:
-                    state = detection.snapshot()
- 
-                    await move.movement_response(robot,state["detection_time"], state["no_detection_time"], state["detected"], state["future_distance"], state["future_center_x"], state["future_center_y"], Objective.Track_Hit, get_action())
-
+            if detection is not None:
+                state = detection.snapshot()
+                if robot.objective == Objective.Track_Hit or robot.objective == Objective.Stand_Hit:
+                    await move.movement_response(robot, state["no_detection_time"], state["detected"], state["future_distance"], state["future_center_x"], state["future_center_y"], robot.objective, get_action())
+                
+                elif robot.objective == Objective.Stand_Dodge:
+                    await move.avoid_response(robot, state["detected"], state["future_distance"])
+            
             await asyncio.sleep(0.1)
 
         
@@ -840,8 +837,6 @@ def update_robot_status():
     cpu_temp = utils.cpu_temp()
     cpu_load = utils.cpu_load()
     npu_temp = utils.npu_temp()
-    npu_load = utils.npu_load()
-
     
     
     robot_battery_label.config(text=f"Robot Battery        : {status_check(robot_battery, "%")}")
@@ -853,7 +848,6 @@ def update_robot_status():
     cpu_temp_label.config(  text=f"CPU Temp             : {status_check(cpu_temp, "°C")}")
     cpu_load_label.config(  text=f"CPU Load             : {status_check(cpu_load, "%")}")
     npu_temp_label.config(  text=f"NPU Temp             : {status_check(npu_temp, "°C")}")
-    npu_load_label.config(  text=f"NPU Load             : {status_check(npu_load, "%")}")
 
     if robot is not None:
         if robot.conn.datachannel.pub_sub.channel.readyState == "open":

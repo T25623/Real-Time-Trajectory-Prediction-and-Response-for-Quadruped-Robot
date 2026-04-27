@@ -93,7 +93,7 @@ def pi_battery_soc():
     result = subprocess.run("vcgencmd pmic_read_adc | grep EXT5V_V", shell=True, capture_output=True, text=True)
 
     voltage = float(result.stdout.strip().split("=")[-1].replace("V", ""))
-    if voltage < 4.95:
+    if voltage < 4:
         pi_voltage_level = "Low"
     return pi_voltage_level
 

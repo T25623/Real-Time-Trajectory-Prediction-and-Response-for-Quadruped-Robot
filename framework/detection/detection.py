@@ -22,13 +22,13 @@ import queue
 import threading
 import cv2
 import time
-from framework.prediction.kalman_filter import KalmanFilter, UnscentedKalmanFilter
+from framework.prediction.kalman_filter import KalmanFilter3D
 import numpy as np
 from collections import deque
 from picamera2 import Picamera2
 
 class DetectionPipeline:
-    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, camera_focal_length=0.275, colour_format="RGB888", batch_size=1, kalman_filter=UnscentedKalmanFilter.xyz_predict(), predict_steps=15, FPS_counter=False, trail_length=30, headless=False) -> None:
+    def __init__(self, hef_path, config_path, labels_path, source="rpi", resolution=(1280, 720), framerate=60, camera_focal_length=0.275, colour_format="RGB888", batch_size=1, kalman_filter=KalmanFilter3D(g=0.0005), predict_steps=15, FPS_counter=False, trail_length=30, headless=False) -> None:
         # Camera config
         self.source = source
         self.resolution = resolution
@@ -84,14 +84,14 @@ class DetectionPipeline:
         with self._state_lock:
             detected = self.detected
             return {
-                "detected":         detected,
-                "future_distance":  self.future_distance  if detected else None,
-                "future_center_x":  self.future_center_x  if detected else None,
-                "future_center_y":  self.future_center_y  if detected else None,
+                "detected": detected,
+                "future_distance": self.future_distance if detected else None,
+                "future_center_x": self.future_center_x if detected else None,
+                "future_center_y": self.future_center_y if detected else None,
                 "no_detection_time": self.no_detection_time,
-                "detection_time":   self.detection_time,
-                "min_distance":     self.min_distance      if detected else None,
-                "confidence_score": self.confidence_score  if detected else None,
+                "detection_time": self.detection_time,
+                "min_distance": self.min_distance if detected else None,
+                "confidence_score": self.confidence_score if detected else None,
             }
 
 
@@ -156,27 +156,13 @@ class DetectionPipeline:
             # Calculate distance to detected object
             min_distance = self.estimate_distance(x0, y0, x1, y1)
 
-            # Create array for kalman filter of center x, center y, and distance 
-            z = np.array([
-                [center_x],
-                [center_y],
-                [min_distance]
-            ])
-            
-
-            u = np.zeros((2,1))
-            # Predict next position of detected object
-            self.kalman_filter.predict(u)
-            state = self.kalman_filter.update(z)
+            self.kalman_filter.update(center_x, center_y, min_distance)
 
             with self._state_lock:
                 self.confidence_score = confidence_score
                 self.center_x = center_x
                 self.center_y = center_y
                 self.min_distance = min_distance
-                self.predicted_center_x = state[0, 0]
-                self.predicted_center_y = state[1, 0]
-                self.predicted_distance = state[2, 0]
                 self.no_detection_time = 0
                 self.detection_time = time.time()
                 self.detected = True
@@ -188,13 +174,11 @@ class DetectionPipeline:
                 self.center_x = None
                 self.center_y = None
                 self.min_distance = None
-                self.predicted_center_x = None
-                self.predicted_center_y = None
-                self.predicted_distance = None
                 self.future_distance = None
                 self.future_center_x = None
                 self.future_center_y = None
                 self.detection_time = 0
+                # self.kalman_filter.reset()
 
 
 
@@ -287,6 +271,12 @@ class DetectionPipeline:
                 if result is None:
                     break
 
+                original_frame, inference_result = result
+                detections = extract_detections(original_frame, inference_result, self.config_data)
+                self.process_detections(detections)
+                frame = draw_detections(detections, original_frame.copy(), self.labels)
+                pz = 0
+
                 if self.FPS_counter:
                     new_frame_time = time.time()
                     fps_total += 1 / (new_frame_time - prev_frame_time + 1e-6)
@@ -296,12 +286,6 @@ class DetectionPipeline:
                     if new_frame_time >= fps_time + 1:
                         fps_text = f"FPS: {fps_total / frame_count:.1f}"
                         fps_total, frame_count, fps_time = 0, 0, new_frame_time
-
-                original_frame, inference_result = result
-                detections = extract_detections(original_frame, inference_result, self.config_data)
-                self.process_detections(detections)
-                frame = draw_detections(detections, original_frame.copy(), self.labels)
-                pz = 0
 
                 if self.kalman_filter is not None and self.detected:
 

@@ -52,7 +52,8 @@ async def robot_connection_setup():
 
         robot.status_check()
         await robot.low_battery_action()
-
+        await robot.high_temp_action()
+        
         if detection is not None:
             state = detection.snapshot()
             await move.movement_response(robot, state["detection_time"], state["no_detection_time"], state["detected"], state["future_distance"], state["future_center_x"], state["future_center_y"], Objective.Track_Hit, response_action)

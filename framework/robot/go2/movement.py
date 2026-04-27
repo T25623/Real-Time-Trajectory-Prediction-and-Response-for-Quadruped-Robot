@@ -59,7 +59,8 @@ async def perform_action(conn, action):
         RTC_TOPIC["SPORT_MOD"],
         {"api_id": SPORT_CMD[action], "parameter": {"data": True}}
     )
-    response = await go2_movement(conn, 0, 0, 0)
+    if action == "FrontPounce":
+        response = await go2_movement(conn, -0.4, 0, 0)
     
     return response
 
@@ -149,32 +150,30 @@ async def avoid_obstacle(robot):
             
     await go2_movement(robot.conn, (vector[1]*0.1), (-vector[0]*0.1), 0)
 
-async def avoid_response(robot, detection, track=True):
-    while not robot.stop:
-        if robot.avoid_vector is not None:
-            await avoid_obstacle(robot)
+async def avoid_response(robot, detected, future_distance):
+    global st
+    if robot.avoid_vector is not None:
+        await avoid_obstacle(robot)
 
-        elif detection.detected:
-            if detection.future_distance >= -0.1 and detection.future_distance <= 0.3: 
-                forward = calculate_movement(detection.future_distance, 0.1, 0.2, robot.movement_speed)
-                rotate = calculate_rotation(detection.future_center_x, 0.1, robot.rotate_speed)
-                    
-                pitch = calculate_pitch(detection.future_center_y, 0.1, robot.pitch_speed, pitch) 
-                await move_pitch(robot.conn, forward, 0, rotate, 0, pitch, 0)
+    elif (time.time() - st) >= 5 and detected:
+        if future_distance is not None and future_distance >= -0.1 and future_distance <= 0.3: 
+            await move_pitch(robot.conn, -0.5, 0, 0, 0, 0, 0)
+            
 
 
 pitch = 0
 st = time.time()
-async def movement_response(robot, detection_time, no_detection_time, detected, future_distance, future_center_x, future_center_y, track, response_action):
+async def movement_response(robot, no_detection_time, detected, future_distance, future_center_x, future_center_y, track, response_action):
     global st, pitch
     if robot.avoid_vector is not None and robot.orientation is not None:
         await avoid_obstacle(robot)
         
-    elif (time.time() - no_detection_time) >= 5 and not detected and (time.time() - st) >= 3 and track == 0:
+    elif (time.time() - no_detection_time) >= 5 and not detected and (time.time() - st) >= 3 and track == Objective.Track_Hit:
         st = time.time()
         await go2_movement(robot.conn, 0, 0, 2)
             
     elif detected:
+        no_detection_time = time.time()
         if future_distance is not None and future_distance >= -0.1 and future_distance <= 0.3:
             if track == Objective.Track_Hit:
                 await asyncio.sleep(1.5)

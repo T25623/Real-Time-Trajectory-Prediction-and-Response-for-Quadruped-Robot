@@ -5,7 +5,6 @@ import framework.robot.go2.setup as go2
 from framework.robot.go2.setup import WebRTCConnection
 import asyncio
 from framework.detection.detection import DetectionPipeline
-from framework.prediction.kalman_filter import KalmanFilter
 import time
 import matplotlib
 matplotlib.use('Agg')
@@ -61,7 +60,7 @@ def plot_lidar(filtered_points, nearby_points, center, vector, facing):
     if len(nearby_points) > 0:
         ax.scatter(nearby_points[:, 0], nearby_points[:, 1], c='red', s=25)
         
-    ax.scatter(*center[:2], c='yellow', s=15, zorder=5)
+    ax.scatter(*center[:2], c='orange', s=30, zorder=5)
     
     if vector is not None:
         ax.annotate("", xy=(center[0] + vector[0]*0.5, center[1] + vector[1]*0.5),

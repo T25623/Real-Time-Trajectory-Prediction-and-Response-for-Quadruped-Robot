@@ -121,7 +121,12 @@ class WebRTCConnection:
 
     async def low_battery_action(self):
         if self.state_of_charge is not None:
-            if self.state_of_charge <= 5:
+            if self.state_of_charge <= 3:
+                await move.perform_action(self.conn, "StandDown")
+    
+    async def high_temp_action(self):
+        if self.motor_temperature is not None or self.temperature is not None:
+            if self.motor_temperature >= 70 or self.motor_temperature >= 90 :
                 await move.perform_action(self.conn, "StandDown")
                 
         
