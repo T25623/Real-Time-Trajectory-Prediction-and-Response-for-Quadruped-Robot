@@ -1,5 +1,4 @@
 import pandas as pd
-import pyvista as pv
 import numpy as np
 import framework.robot.go2.setup as go2
 from framework.robot.go2.setup import WebRTCConnection
